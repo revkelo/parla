@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Parla · Intérprete médico en vivo",
+  title: "Parla · Intérprete médico en vivo (ES ⇄ EN)",
   description:
-    "Interpretación médica profesional español ⇄ inglés en tiempo real (OPI/VRI).",
+    "Interpretación médica profesional español ⇄ inglés en tiempo real para intérpretes, hospitales y clínicas (OPI/VRI). Terminología clínica, acrónimos, dosis y cifras precisas.",
 };
 
 export default function RootLayout({

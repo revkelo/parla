@@ -11,7 +11,7 @@ const STATUS_LABEL: Record<string, string> = {
   error: "Error",
 };
 
-type AiEngine = "groq" | "openrouter" | "google";
+type AiEngine = "groq" | "google";
 type Interpretation = {
   text: string;
   detected: "es" | "en";
@@ -24,16 +24,18 @@ type Usage = {
     limitRequests: number;
     resetRequests: string;
   } | null;
-  openrouter: {
-    isFreeTier: boolean;
-    usageDaily: number;
-    limitRemaining: number | null;
-  } | null;
+  google: { configured: boolean } | null;
 };
 
 // Precio aprox. de Deepgram nova-3 streaming (USD por minuto) para estimar horas.
 const PRICE_PER_MIN = 0.0077;
 const LANG_TAG: Record<string, string> = { es: "ES", en: "EN" };
+
+function fmtDuration(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
 
 export default function Home() {
   const { status, activeEngine, segments, interim, error, start, stop, reset } =
@@ -43,18 +45,30 @@ export default function Home() {
   // Modo pruebas: forzar motores concretos para comparar.
   const [testMode, setTestMode] = useState(false);
   const [sttChoice, setSttChoice] = useState<"auto" | EngineName>("auto");
-  const [aiChoice, setAiChoice] = useState<
-    "auto" | "groq" | "openrouter" | "google"
-  >("auto");
+  const [aiChoice, setAiChoice] = useState<"auto" | "groq" | "google">("auto");
   const [interpretations, setInterpretations] = useState<
     Record<number, Interpretation>
   >({});
   const [times, setTimes] = useState<Record<number, string>>({});
+  const [elapsed, setElapsed] = useState(0);
   const requestedRef = useRef<Set<number>>(new Set());
   const streamEndRef = useRef<HTMLDivElement>(null);
+  const startTsRef = useRef<number | null>(null);
 
   const isActive = status === "listening" || status === "connecting";
   const hasContent = segments.length > 0 || interim.length > 0;
+
+  // Cronómetro de sesión (para registros/facturación del intérprete).
+  useEffect(() => {
+    if (status !== "listening") return;
+    if (startTsRef.current == null) startTsRef.current = Date.now();
+    const id = setInterval(() => {
+      if (startTsRef.current != null) {
+        setElapsed(Math.floor((Date.now() - startTsRef.current) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [status]);
 
   // Interpreta cada intervención finalizada una sola vez (ES⇄EN, modo médico).
   useEffect(() => {
@@ -93,7 +107,7 @@ export default function Home() {
             if (d.groqUsage) {
               setUsage((prev) => ({
                 deepgram: prev?.deepgram ?? null,
-                openrouter: prev?.openrouter ?? null,
+                google: prev?.google ?? null,
                 groq: d.groqUsage!,
               }));
             }
@@ -130,19 +144,50 @@ export default function Home() {
     loadUsage();
   }, [loadUsage]);
 
+  const handleStart = () => {
+    startTsRef.current = null;
+    setElapsed(0);
+    start("multi", sttChoice === "auto" ? undefined : sttChoice);
+  };
+
   const handleReset = () => {
     reset();
     requestedRef.current = new Set();
     setInterpretations({});
     setTimes({});
+    startTsRef.current = null;
+    setElapsed(0);
   };
 
-  const handleCopy = () => {
-    const lines = segments.map((s) => {
-      const t = interpretations[s.id]?.text ?? "";
-      return `[${times[s.id] ?? ""}] ${s.text}\n${t}`;
+  const sessionLines = () =>
+    segments.map((s) => {
+      const it = interpretations[s.id];
+      const src = it?.detected ?? "es";
+      const tgt = src === "es" ? "EN" : "ES";
+      return `[${times[s.id] ?? ""}] (${LANG_TAG[src]}) ${s.text}\n(${tgt}) ${
+        it?.text ?? ""
+      }`;
     });
-    navigator.clipboard.writeText(lines.join("\n\n"));
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(sessionLines().join("\n\n"));
+  };
+
+  const handleDownload = () => {
+    const header =
+      `PARLA — Registro de interpretación médica (ES ⇄ EN)\n` +
+      `Fecha: ${new Date().toLocaleString("es")}\n` +
+      `Duración: ${fmtDuration(elapsed)} · Turnos: ${segments.length}\n` +
+      `${"—".repeat(48)}\n\n`;
+    const blob = new Blob([header + sessionLines().join("\n\n") + "\n"], {
+      type: "text/plain;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `parla-sesion-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -168,6 +213,19 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-2">
+            {(isActive || segments.length > 0) && (
+              <span
+                title="Duración · turnos de la sesión"
+                className="hidden items-center gap-1.5 font-mono text-[11px] tabular-nums tracking-tight text-muted sm:flex"
+              >
+                <span className="text-foreground/80">{fmtDuration(elapsed)}</span>
+                <span className="text-faint">·</span>
+                <span>
+                  {segments.length}
+                  <span className="text-faint"> turnos</span>
+                </span>
+              </span>
+            )}
             {activeEngine && (status === "listening" || status === "connecting") && (
               <span
                 title={`Motor de transcripción: ${ENGINE_LABEL[activeEngine]}`}
@@ -195,9 +253,7 @@ export default function Home() {
             </button>
             {!isActive ? (
               <button
-                onClick={() =>
-                  start("multi", sttChoice === "auto" ? undefined : sttChoice)
-                }
+                onClick={handleStart}
                 className="flex items-center gap-2 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
               >
                 <span className="inline-block h-2 w-2 rounded-full bg-live" />
@@ -331,6 +387,9 @@ export default function Home() {
               <FooterButton onClick={handleReset}>Limpiar</FooterButton>
             )}
             <FooterButton onClick={handleCopy}>Copiar</FooterButton>
+            <FooterButton onClick={handleDownload} primary>
+              Descargar
+            </FooterButton>
           </div>
         </footer>
       )}
@@ -356,25 +415,19 @@ function StatusPill({ status }: { status: string }) {
 }
 
 function EngineTag({ engine }: { engine: AiEngine }) {
-  const label =
-    engine === "groq"
-      ? "groq"
-      : engine === "openrouter"
-        ? "openrouter"
-        : "google";
-  const isBackup = engine !== "groq";
+  const isBackup = engine === "google";
   return (
     <span
       title={
         isBackup
-          ? `Resuelto por el respaldo ${label}`
+          ? "Resuelto por el respaldo Google (Gemini)"
           : "Motor de interpretación: Groq"
       }
       className={`shrink-0 font-mono text-[9px] uppercase tracking-[0.12em] ${
         isBackup ? "text-amber-500" : "text-faint"
       }`}
     >
-      {label}
+      {engine}
     </span>
   );
 }
@@ -382,14 +435,20 @@ function EngineTag({ engine }: { engine: AiEngine }) {
 function FooterButton({
   onClick,
   children,
+  primary,
 }: {
   onClick: () => void;
   children: React.ReactNode;
+  primary?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className="rounded-md px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.13em] text-muted transition-colors hover:bg-foreground/[0.05] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+      className={`rounded-md px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.13em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+        primary
+          ? "bg-accent/10 text-accent hover:bg-accent/15"
+          : "text-muted hover:bg-foreground/[0.05] hover:text-foreground"
+      }`}
     >
       {children}
     </button>
@@ -405,8 +464,8 @@ function TestPanel({
 }: {
   sttChoice: "auto" | EngineName;
   setSttChoice: (v: "auto" | EngineName) => void;
-  aiChoice: "auto" | "groq" | "openrouter" | "google";
-  setAiChoice: (v: "auto" | "groq" | "openrouter" | "google") => void;
+  aiChoice: "auto" | "groq" | "google";
+  setAiChoice: (v: "auto" | "groq" | "google") => void;
   sttLocked: boolean;
 }) {
   return (
@@ -418,25 +477,21 @@ function TestPanel({
         disabled={sttLocked}
         hint={sttLocked ? "detén la sesión para cambiar" : "aplica al iniciar"}
         options={[
-          { value: "auto", label: "Automático (cadena)" },
+          { value: "auto", label: "Automático (Deepgram→Navegador)" },
           { value: "deepgram", label: "Deepgram (streaming)" },
-          { value: "google", label: "Google Gemini (trozos)" },
           { value: "webspeech", label: "Navegador (Web Speech)" },
         ]}
       />
       <TestSelect
         label="Interpretación (IA)"
         value={aiChoice}
-        onChange={(v) =>
-          setAiChoice(v as "auto" | "groq" | "openrouter" | "google")
-        }
+        onChange={(v) => setAiChoice(v as "auto" | "groq" | "google")}
         disabled={false}
         hint="aplica al siguiente turno"
         options={[
-          { value: "auto", label: "Automático (Groq→respaldos)" },
+          { value: "auto", label: "Automático (Groq→Google)" },
           { value: "groq", label: "Groq (gpt-oss-120b)" },
-          { value: "openrouter", label: "OpenRouter (free)" },
-          { value: "google", label: "Google (Gemini)" },
+          { value: "google", label: "Google (Gemini 2.5)" },
         ]}
       />
     </div>
@@ -501,7 +556,7 @@ function RefreshIcon({ spinning }: { spinning: boolean }) {
 }
 
 function UsageBar({ usage }: { usage: Usage }) {
-  const { deepgram: dg, groq: gq, openrouter: or } = usage;
+  const { deepgram: dg, groq: gq, google: gg } = usage;
   const groqLow = gq !== null && gq.remainingRequests / gq.limitRequests <= 0.15;
   const groqOut = gq !== null && gq.remainingRequests <= 0;
 
@@ -509,8 +564,8 @@ function UsageBar({ usage }: { usage: Usage }) {
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
       {dg && (
         <Stat
-          dot="ok"
-          label="Deepgram"
+          dot={dg.amount <= 0.02 ? "out" : "ok"}
+          label="Deepgram · voz"
           value={`$${dg.amount.toLocaleString("en-US", {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
@@ -521,17 +576,17 @@ function UsageBar({ usage }: { usage: Usage }) {
       {gq && (
         <Stat
           dot={groqOut ? "out" : groqLow ? "low" : "ok"}
-          label="Groq · principal"
+          label="Groq · IA principal"
           value={`${gq.remainingRequests}/${gq.limitRequests} req`}
           sub={`reinicia en ${shortReset(gq.resetRequests)}`}
         />
       )}
-      {or && (
+      {gg && (
         <Stat
-          dot="backup"
-          label="OpenRouter · respaldo"
-          value={or.usageDaily > 0 ? `${or.usageDaily} hoy` : "en espera"}
-          sub={or.isFreeTier ? "modo free" : "modo pago"}
+          dot={gg.configured ? "backup" : "out"}
+          label="Google · IA respaldo"
+          value={gg.configured ? "Gemini 2.5" : "no configurado"}
+          sub={gg.configured ? "listo si Groq falla" : "falta la API key"}
         />
       )}
     </div>
@@ -593,23 +648,65 @@ function Dot({ delay = "0s" }: { delay?: string }) {
 }
 
 function EmptyState() {
+  const steps = [
+    {
+      n: "1",
+      t: "Inicia la sesión",
+      d: "Pulsa Iniciar y concede el micrófono.",
+    },
+    {
+      n: "2",
+      t: "Habla con naturalidad",
+      d: "En español o inglés; se detecta el idioma solo.",
+    },
+    {
+      n: "3",
+      t: "Recibe la interpretación",
+      d: "Cada intervención aparece interpretada al instante.",
+    },
+    {
+      n: "4",
+      t: "Guarda el registro",
+      d: "Copia o descarga la sesión al terminar.",
+    },
+  ];
   return (
-    <div className="clinical-grid mt-4 rounded-xl border border-dashed border-hairline px-6 py-12">
-      <div className="flex flex-col items-start gap-3">
-        <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] text-accent">
+    <div className="mt-4 flex flex-col gap-6">
+      <div className="clinical-grid rounded-2xl border border-hairline bg-surface/60 px-6 py-10">
+        <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-accent">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
-          Intérprete en espera
+          Intérprete médico en espera
         </span>
-        <p className="max-w-md text-[15px] leading-relaxed text-muted">
-          Pulsa <span className="font-medium text-foreground">Iniciar</span> y
-          habla en español o inglés. Cada intervención se interpreta al otro
-          idioma con terminología clínica, en primera persona y con los
-          acrónimos expandidos.
-        </p>
-        <p className="font-mono text-[10px] uppercase tracking-[0.13em] text-faint">
-          Confidencial · OPI / VRI
+        <h2 className="mt-4 max-w-lg text-2xl font-semibold leading-tight tracking-tight text-foreground">
+          Interpretación médica en vivo, español&nbsp;⇄&nbsp;inglés.
+        </h2>
+        <p className="mt-3 max-w-md text-[15px] leading-relaxed text-muted">
+          Diseñado para intérpretes médicos, hospitales y clínicas. Terminología
+          clínica precisa, acrónimos expandidos, dosis, cifras y nombres
+          intactos — sin resumir, omitir ni explicar.
         </p>
       </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {steps.map((s) => (
+          <div
+            key={s.n}
+            className="flex gap-3 rounded-xl border border-hairline bg-surface/40 px-4 py-3"
+          >
+            <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md bg-accent/12 font-mono text-xs font-semibold text-accent">
+              {s.n}
+            </span>
+            <div>
+              <p className="text-sm font-medium text-foreground">{s.t}</p>
+              <p className="text-[13px] leading-relaxed text-muted">{s.d}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
+        Confidencial · OPI / VRI · herramienta de asistencia
+      </p>
     </div>
   );
 }

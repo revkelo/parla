@@ -3,11 +3,10 @@
 // Motores de transcripción (STT) con una interfaz común, para una cadena de
 // respaldo: Deepgram (streaming) → Groq Whisper (por trozos) → Web Speech API.
 
-export type EngineName = "deepgram" | "google" | "webspeech";
+export type EngineName = "deepgram" | "webspeech";
 
 export const ENGINE_LABEL: Record<EngineName, string> = {
   deepgram: "Deepgram",
-  google: "Google (Gemini)",
   webspeech: "Navegador",
 };
 
@@ -140,134 +139,6 @@ export async function startDeepgram(
   };
 }
 
-/* ────────────────── Google Gemini (graba WAV por ventanas) ────────────────── */
-
-function encodeWav(samples: Float32Array, sampleRate: number): Blob {
-  const buffer = new ArrayBuffer(44 + samples.length * 2);
-  const view = new DataView(buffer);
-  const writeStr = (off: number, s: string) => {
-    for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
-  };
-  writeStr(0, "RIFF");
-  view.setUint32(4, 36 + samples.length * 2, true);
-  writeStr(8, "WAVE");
-  writeStr(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, 1, true); // mono
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeStr(36, "data");
-  view.setUint32(40, samples.length * 2, true);
-  let off = 44;
-  for (let i = 0; i < samples.length; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]));
-    view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-    off += 2;
-  }
-  return new Blob([view], { type: "audio/wav" });
-}
-
-function downsample(
-  buffer: Float32Array,
-  inRate: number,
-  outRate = 16000
-): Float32Array {
-  if (outRate >= inRate) return buffer;
-  const ratio = inRate / outRate;
-  const len = Math.round(buffer.length / ratio);
-  const out = new Float32Array(len);
-  let oi = 0;
-  let ib = 0;
-  while (oi < len) {
-    const next = Math.round((oi + 1) * ratio);
-    let sum = 0;
-    let cnt = 0;
-    for (let i = ib; i < next && i < buffer.length; i++) {
-      sum += buffer[i];
-      cnt++;
-    }
-    out[oi] = cnt ? sum / cnt : 0;
-    oi++;
-    ib = next;
-  }
-  return out;
-}
-
-export async function startGoogleStt(
-  handlers: SttHandlers
-): Promise<SttController> {
-  const stream = await getMic();
-  const AC =
-    window.AudioContext ||
-    (window as unknown as { webkitAudioContext: typeof AudioContext })
-      .webkitAudioContext;
-  const ctx = new AC();
-  const source = ctx.createMediaStreamSource(stream);
-  const proc = ctx.createScriptProcessor(4096, 1, 1);
-
-  let chunks: Float32Array[] = [];
-  let stopped = false;
-  let sending = false;
-
-  proc.onaudioprocess = (e) => {
-    if (stopped) return;
-    chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-  };
-  source.connect(proc);
-  proc.connect(ctx.destination); // no escribimos salida → silencio, sin eco
-
-  const flushWindow = async () => {
-    if (sending || chunks.length === 0) return;
-    sending = true;
-    const total = chunks.reduce((a, c) => a + c.length, 0);
-    const merged = new Float32Array(total);
-    let o = 0;
-    for (const c of chunks) {
-      merged.set(c, o);
-      o += c.length;
-    }
-    chunks = [];
-    try {
-      const wav = encodeWav(downsample(merged, ctx.sampleRate, 16000), 16000);
-      const fd = new FormData();
-      fd.append("audio", wav, "audio.wav");
-      const res = await fetch("/api/transcribe", { method: "POST", body: fd });
-      if (res.ok) {
-        const { text } = (await res.json()) as { text: string };
-        if (text) handlers.onFinal(text);
-      }
-    } catch {
-      /* una ventana fallida no corta la sesión */
-    } finally {
-      sending = false;
-    }
-  };
-
-  handlers.onOpen?.();
-  handlers.onInterim("Escuchando…");
-  const timer = setInterval(flushWindow, 4000);
-
-  return {
-    stop: () => {
-      stopped = true;
-      clearInterval(timer);
-      handlers.onInterim("");
-      void flushWindow();
-      try {
-        proc.disconnect();
-        source.disconnect();
-        void ctx.close();
-      } catch {
-        /* noop */
-      }
-      stream.getTracks().forEach((t) => t.stop());
-    },
-  };
-}
-
 /* ───────────────────────── Web Speech API (navegador) ─────────────────────── */
 
 type SpeechRecognitionLike = {
@@ -364,6 +235,5 @@ export async function startEngine(
   language: string
 ): Promise<SttController> {
   if (name === "deepgram") return startDeepgram(handlers, language);
-  if (name === "google") return startGoogleStt(handlers);
   return startWebSpeech(handlers);
 }

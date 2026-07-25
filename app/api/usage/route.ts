@@ -10,11 +10,7 @@ type GroqUsage = {
   limitRequests: number;
   resetRequests: string;
 } | null;
-type OpenRouterUsage = {
-  isFreeTier: boolean;
-  usageDaily: number;
-  limitRemaining: number | null;
-} | null;
+type GoogleUsage = { configured: boolean } | null;
 
 async function getDeepgram(): Promise<DeepgramUsage> {
   const apiKey = process.env.DEEPGRAM_API_KEY;
@@ -77,31 +73,11 @@ async function getGroq(): Promise<GroqUsage> {
   }
 }
 
-async function getOpenRouter(): Promise<OpenRouterUsage> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return null;
-  try {
-    const res = await fetch("https://openrouter.ai/api/v1/key", {
-      headers: { Authorization: `Bearer ${apiKey}` },
-      cache: "no-store",
-    });
-    if (!res.ok) return null;
-    const { data } = await res.json();
-    return {
-      isFreeTier: !!data?.is_free_tier,
-      usageDaily: data?.usage_daily ?? 0,
-      limitRemaining: data?.limit_remaining ?? null,
-    };
-  } catch {
-    return null;
-  }
+function getGoogle(): GoogleUsage {
+  return { configured: !!process.env.GOOGLE_GENERATIVE_AI_API_KEY };
 }
 
 export async function GET() {
-  const [deepgram, groq, openrouter] = await Promise.all([
-    getDeepgram(),
-    getGroq(),
-    getOpenRouter(),
-  ]);
-  return NextResponse.json({ deepgram, groq, openrouter });
+  const [deepgram, groq] = await Promise.all([getDeepgram(), getGroq()]);
+  return NextResponse.json({ deepgram, groq, google: getGoogle() });
 }
