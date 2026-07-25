@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLiveTranscription } from "./hooks/useLiveTranscription";
+import { ENGINE_LABEL } from "./lib/stt";
 
 const STATUS_LABEL: Record<string, string> = {
   idle: "Listo",
@@ -34,7 +35,7 @@ const PRICE_PER_MIN = 0.0077;
 const LANG_TAG: Record<string, string> = { es: "ES", en: "EN" };
 
 export default function Home() {
-  const { status, segments, interim, error, start, stop, reset } =
+  const { status, activeEngine, segments, interim, error, start, stop, reset } =
     useLiveTranscription();
   const [usage, setUsage] = useState<Usage | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -157,6 +158,18 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-2">
+            {activeEngine && (status === "listening" || status === "connecting") && (
+              <span
+                title={`Motor de transcripción: ${ENGINE_LABEL[activeEngine]}`}
+                className={`hidden font-mono text-[9.5px] uppercase tracking-[0.12em] sm:inline ${
+                  activeEngine === "deepgram" ? "text-faint" : "text-amber-500"
+                }`}
+              >
+                {activeEngine === "deepgram"
+                  ? "vía Deepgram"
+                  : `respaldo · ${ENGINE_LABEL[activeEngine]}`}
+              </span>
+            )}
             <StatusPill status={status} />
             {!isActive ? (
               <button

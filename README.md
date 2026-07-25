@@ -16,7 +16,7 @@ Micrófono ──► MediaRecorder ──WebSocket──► Deepgram (nova-3, st
                                                └─ si falla ─► OpenRouter (respaldo free)
 ```
 
-- **Transcripción**: [Deepgram](https://deepgram.com) nova-3 vía WebSocket streaming, con detección de idioma (`language=multi`) para captar el cambio médico ⇄ paciente.
+- **Transcripción**: [Deepgram](https://deepgram.com) nova-3 vía WebSocket streaming, con detección de idioma (`language=multi`). **Cadena de respaldo automática** si Deepgram se agota o falla: Groq Whisper (`whisper-large-v3-turbo`, por trozos) → Web Speech API (nativo del navegador). Ver `app/lib/stt.ts`.
 - **Interpretación médica**: modelo `openai/gpt-oss-120b` en [Groq](https://groq.com) (free tier, sin tarjeta), guiado por un system prompt de intérprete profesional (identidad neutral, primera persona, terminología por especialidad, acrónimos con formato `HTN (hipertensión)`, medicamentos/dosis/números/nombres intactos, tono preservado).
 - **Respaldo**: si Groq falla, reintenta automáticamente con [OpenRouter](https://openrouter.ai) en modo free (`openai/gpt-oss-20b:free`).
 - **Seguridad**: la API key de Deepgram nunca llega al navegador. El cliente pide un **token JWT temporal** (30 s) a `/api/deepgram/token` y abre el WebSocket directo con el esquema `bearer`.
