@@ -100,11 +100,31 @@ function groqUsageFromHeaders(
  * Interpreta con Groq (principal) y, si falla, reintenta con OpenRouter (free).
  * Devuelve el texto, qué motor lo resolvió y el uso de Groq leído de sus headers.
  */
-async function interpretWithFallback(text: string): Promise<{
+async function runOpenRouter(text: string) {
+  if (!process.env.OPENROUTER_API_KEY) {
+    throw new Error("Falta OPENROUTER_API_KEY.");
+  }
+  const openrouter = createOpenRouter({
+    apiKey: process.env.OPENROUTER_API_KEY,
+  });
+  const r = await runInterpretation(openrouter(OPENROUTER_MODEL), text);
+  return { interpretation: r.text, engine: "openrouter" as const, groqUsage: null };
+}
+
+/**
+ * Interpreta con Groq (principal) y respaldo OpenRouter (free).
+ * `force` fija un motor concreto (modo pruebas), sin respaldo.
+ */
+async function interpretWithFallback(
+  text: string,
+  force?: "groq" | "openrouter"
+): Promise<{
   interpretation: string;
   engine: "groq" | "openrouter";
   groqUsage: GroqUsage;
 }> {
+  if (force === "openrouter") return runOpenRouter(text);
+
   try {
     const r = await runInterpretation(groq(GROQ_MODEL), text);
     return {
@@ -113,21 +133,22 @@ async function interpretWithFallback(text: string): Promise<{
       groqUsage: groqUsageFromHeaders(r.headers),
     };
   } catch (err) {
-    if (!process.env.OPENROUTER_API_KEY) throw err;
+    // Groq forzado o sin respaldo disponible: propagar el error.
+    if (force === "groq" || !process.env.OPENROUTER_API_KEY) throw err;
     console.warn("Groq falló, usando respaldo OpenRouter:", err);
-    const openrouter = createOpenRouter({
-      apiKey: process.env.OPENROUTER_API_KEY,
-    });
-    const r = await runInterpretation(openrouter(OPENROUTER_MODEL), text);
-    return { interpretation: r.text, engine: "openrouter", groqUsage: null };
+    return runOpenRouter(text);
   }
 }
 
 export async function POST(req: Request) {
   let text: string;
+  let force: "groq" | "openrouter" | undefined;
   try {
     const body = await req.json();
     text = typeof body?.text === "string" ? body.text.trim() : "";
+    if (body?.engine === "groq" || body?.engine === "openrouter") {
+      force = body.engine;
+    }
   } catch {
     return NextResponse.json({ error: "Cuerpo inválido." }, { status: 400 });
   }
@@ -146,8 +167,10 @@ export async function POST(req: Request) {
   const detected = detectSource(text);
 
   try {
-    const { interpretation, engine, groqUsage } =
-      await interpretWithFallback(text);
+    const { interpretation, engine, groqUsage } = await interpretWithFallback(
+      text,
+      force
+    );
     return NextResponse.json({ interpretation, detected, engine, groqUsage });
   } catch (err) {
     console.error("Error interpretando (Groq y respaldo):", err);

@@ -28,7 +28,8 @@ export interface UseLiveTranscription {
   transcript: string;
   interim: string;
   error: string | null;
-  start: (language?: string) => Promise<void>;
+  /** `forced` fija un motor concreto (modo pruebas); si se omite, usa la cadena automática. */
+  start: (language?: string, forced?: EngineName) => Promise<void>;
   stop: () => void;
   reset: () => void;
 }
@@ -110,33 +111,33 @@ export function useLiveTranscription(): UseLiveTranscription {
   }, []);
 
   const start = useCallback(
-    async (language: string = DEFAULT_LANGUAGE) => {
+    async (language: string = DEFAULT_LANGUAGE, forced?: EngineName) => {
       setError(null);
       setStatus("connecting");
       langRef.current = language;
 
-      // Construir la cadena de motores según disponibilidad.
-      const chain: EngineName[] = [];
+      let chain: EngineName[] = [];
 
-      // ¿Queda saldo en Deepgram?
-      let deepgramOk = true;
-      try {
-        const usage = await fetch("/api/usage").then((r) =>
-          r.ok ? r.json() : null
-        );
-        if (usage?.deepgram && usage.deepgram.amount <= DEEPGRAM_MIN_BALANCE) {
-          deepgramOk = false;
+      if (forced) {
+        // Modo pruebas: usar solo el motor elegido, sin respaldo.
+        chain = [forced];
+      } else {
+        // ¿Queda saldo en Deepgram?
+        let deepgramOk = true;
+        try {
+          const usage = await fetch("/api/usage").then((r) =>
+            r.ok ? r.json() : null
+          );
+          if (usage?.deepgram && usage.deepgram.amount <= DEEPGRAM_MIN_BALANCE) {
+            deepgramOk = false;
+          }
+        } catch {
+          /* si falla la consulta, igual intentamos Deepgram primero */
         }
-      } catch {
-        /* si falla la consulta, igual intentamos Deepgram primero */
+        if (deepgramOk) chain.push("deepgram");
+        chain.push("groq");
+        if (isWebSpeechSupported()) chain.push("webspeech");
       }
-      if (deepgramOk) chain.push("deepgram");
-
-      // Groq Whisper (requiere el endpoint /api/transcribe con GROQ_API_KEY).
-      chain.push("groq");
-
-      // Web Speech API si el navegador lo soporta.
-      if (isWebSpeechSupported()) chain.push("webspeech");
 
       chainRef.current = chain;
       chainIdxRef.current = 0;

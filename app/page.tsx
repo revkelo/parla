@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLiveTranscription } from "./hooks/useLiveTranscription";
-import { ENGINE_LABEL } from "./lib/stt";
+import { ENGINE_LABEL, type EngineName } from "./lib/stt";
 
 const STATUS_LABEL: Record<string, string> = {
   idle: "Listo",
@@ -39,6 +39,12 @@ export default function Home() {
     useLiveTranscription();
   const [usage, setUsage] = useState<Usage | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Modo pruebas: forzar motores concretos para comparar.
+  const [testMode, setTestMode] = useState(false);
+  const [sttChoice, setSttChoice] = useState<"auto" | EngineName>("auto");
+  const [aiChoice, setAiChoice] = useState<"auto" | "groq" | "openrouter">(
+    "auto"
+  );
   const [interpretations, setInterpretations] = useState<
     Record<number, Interpretation>
   >({});
@@ -61,7 +67,10 @@ export default function Home() {
       fetch("/api/interpret", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text: seg.text }),
+        body: JSON.stringify({
+          text: seg.text,
+          engine: aiChoice === "auto" ? undefined : aiChoice,
+        }),
       })
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then(
@@ -96,7 +105,7 @@ export default function Home() {
           }))
         );
     });
-  }, [segments]);
+  }, [segments, aiChoice]);
 
   // Auto-scroll al final del hilo.
   useEffect(() => {
@@ -171,9 +180,23 @@ export default function Home() {
               </span>
             )}
             <StatusPill status={status} />
+            <button
+              onClick={() => setTestMode((v) => !v)}
+              aria-pressed={testMode}
+              title="Modo pruebas: elegir motores manualmente"
+              className={`rounded-lg border px-2.5 py-2 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
+                testMode
+                  ? "border-accent/50 bg-accent-soft text-accent"
+                  : "border-hairline text-muted hover:text-foreground"
+              }`}
+            >
+              Pruebas
+            </button>
             {!isActive ? (
               <button
-                onClick={() => start("multi")}
+                onClick={() =>
+                  start("multi", sttChoice === "auto" ? undefined : sttChoice)
+                }
                 className="flex items-center gap-2 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
               >
                 <span className="inline-block h-2 w-2 rounded-full bg-live" />
@@ -213,6 +236,15 @@ export default function Home() {
             </p>
           )}
         </div>
+        {testMode && (
+          <TestPanel
+            sttChoice={sttChoice}
+            setSttChoice={setSttChoice}
+            aiChoice={aiChoice}
+            setAiChoice={setAiChoice}
+            sttLocked={isActive}
+          />
+        )}
       </header>
 
       {error && (
@@ -350,6 +382,87 @@ function FooterButton({
     >
       {children}
     </button>
+  );
+}
+
+function TestPanel({
+  sttChoice,
+  setSttChoice,
+  aiChoice,
+  setAiChoice,
+  sttLocked,
+}: {
+  sttChoice: "auto" | EngineName;
+  setSttChoice: (v: "auto" | EngineName) => void;
+  aiChoice: "auto" | "groq" | "openrouter";
+  setAiChoice: (v: "auto" | "groq" | "openrouter") => void;
+  sttLocked: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-2 border-t border-accent/25 bg-accent-soft/40 px-0.5 py-2.5 sm:grid-cols-2">
+      <TestSelect
+        label="Transcripción"
+        value={sttChoice}
+        onChange={(v) => setSttChoice(v as "auto" | EngineName)}
+        disabled={sttLocked}
+        hint={sttLocked ? "detén la sesión para cambiar" : "aplica al iniciar"}
+        options={[
+          { value: "auto", label: "Automático (cadena)" },
+          { value: "deepgram", label: "Deepgram (streaming)" },
+          { value: "groq", label: "Groq Whisper (trozos)" },
+          { value: "webspeech", label: "Navegador (Web Speech)" },
+        ]}
+      />
+      <TestSelect
+        label="Interpretación (IA)"
+        value={aiChoice}
+        onChange={(v) => setAiChoice(v as "auto" | "groq" | "openrouter")}
+        disabled={false}
+        hint="aplica al siguiente turno"
+        options={[
+          { value: "auto", label: "Automático (Groq→respaldo)" },
+          { value: "groq", label: "Groq (gpt-oss-120b)" },
+          { value: "openrouter", label: "OpenRouter (free)" },
+        ]}
+      />
+    </div>
+  );
+}
+
+function TestSelect({
+  label,
+  value,
+  onChange,
+  options,
+  disabled,
+  hint,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  disabled: boolean;
+  hint: string;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="flex items-center justify-between font-mono text-[9.5px] uppercase tracking-[0.14em] text-accent">
+        {label}
+        <span className="normal-case tracking-normal text-faint">{hint}</span>
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        className="rounded-md border border-hairline bg-surface px-2.5 py-1.5 font-mono text-xs outline-none transition-colors focus-visible:border-accent/50 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
