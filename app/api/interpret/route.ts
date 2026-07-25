@@ -1,3 +1,4 @@
+import { google } from "@ai-sdk/google";
 import { groq } from "@ai-sdk/groq";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText, type LanguageModel } from "ai";
@@ -11,6 +12,10 @@ export const maxDuration = 30;
 const GROQ_MODEL = "openai/gpt-oss-120b";
 // Respaldo: OpenRouter en modo free. Requiere OPENROUTER_API_KEY (opcional).
 const OPENROUTER_MODEL = "openai/gpt-oss-20b:free";
+// Respaldo/opción: Google Gemini. Requiere GOOGLE_GENERATIVE_AI_API_KEY.
+const GOOGLE_MODEL = "gemini-2.5-flash";
+
+type Engine = "groq" | "openrouter" | "google";
 
 const SYSTEM_PROMPT = `Eres EXCLUSIVAMENTE un intérprete médico profesional remoto (OPI/VRI) entre inglés y español, equivalente a un intérprete certificado.
 
@@ -115,19 +120,28 @@ async function runOpenRouter(text: string) {
   return { interpretation: r.text, engine: "openrouter" as const, groqUsage: null };
 }
 
+async function runGoogle(text: string) {
+  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+    throw new Error("Falta GOOGLE_GENERATIVE_AI_API_KEY.");
+  }
+  const r = await runInterpretation(google(GOOGLE_MODEL), text);
+  return { interpretation: r.text, engine: "google" as const, groqUsage: null };
+}
+
 /**
- * Interpreta con Groq (principal) y respaldo OpenRouter (free).
+ * Interpreta con Groq (principal) y respaldos OpenRouter y Google (free).
  * `force` fija un motor concreto (modo pruebas), sin respaldo.
  */
 async function interpretWithFallback(
   text: string,
-  force?: "groq" | "openrouter"
+  force?: Engine
 ): Promise<{
   interpretation: string;
-  engine: "groq" | "openrouter";
+  engine: Engine;
   groqUsage: GroqUsage;
 }> {
   if (force === "openrouter") return runOpenRouter(text);
+  if (force === "google") return runGoogle(text);
 
   try {
     const r = await runInterpretation(groq(GROQ_MODEL), text);
@@ -137,20 +151,31 @@ async function interpretWithFallback(
       groqUsage: groqUsageFromHeaders(r.headers),
     };
   } catch (err) {
-    // Groq forzado o sin respaldo disponible: propagar el error.
-    if (force === "groq" || !process.env.OPENROUTER_API_KEY) throw err;
-    console.warn("Groq falló, usando respaldo OpenRouter:", err);
-    return runOpenRouter(text);
+    if (force === "groq") throw err;
+    console.warn("Groq falló, probando respaldos:", err);
+    // Cadena de respaldo: OpenRouter → Google.
+    if (process.env.OPENROUTER_API_KEY) {
+      try {
+        return await runOpenRouter(text);
+      } catch (err2) {
+        console.warn("OpenRouter falló, probando Google:", err2);
+      }
+    }
+    return runGoogle(text);
   }
 }
 
 export async function POST(req: Request) {
   let text: string;
-  let force: "groq" | "openrouter" | undefined;
+  let force: Engine | undefined;
   try {
     const body = await req.json();
     text = typeof body?.text === "string" ? body.text.trim() : "";
-    if (body?.engine === "groq" || body?.engine === "openrouter") {
+    if (
+      body?.engine === "groq" ||
+      body?.engine === "openrouter" ||
+      body?.engine === "google"
+    ) {
       force = body.engine;
     }
   } catch {

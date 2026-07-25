@@ -16,9 +16,9 @@ Micrófono ──► MediaRecorder ──WebSocket──► Deepgram (nova-3, st
                                                └─ si falla ─► OpenRouter (respaldo free)
 ```
 
-- **Transcripción**: [Deepgram](https://deepgram.com) nova-3 vía WebSocket streaming, con detección de idioma (`language=multi`). **Respaldo automático** si Deepgram se agota o falla: Web Speech API (nativo del navegador). Ver `app/lib/stt.ts`.
-- **Interpretación médica**: modelo `openai/gpt-oss-120b` en [Groq](https://groq.com) (free tier, sin tarjeta), guiado por un system prompt de intérprete profesional (identidad neutral, primera persona, terminología por especialidad, acrónimos con formato `HTN (hipertensión)`, medicamentos/dosis/números/nombres intactos, tono preservado).
-- **Respaldo**: si Groq falla, reintenta automáticamente con [OpenRouter](https://openrouter.ai) en modo free (`openai/gpt-oss-20b:free`).
+- **Transcripción**: [Deepgram](https://deepgram.com) nova-3 vía WebSocket streaming, con detección de idioma (`language=multi`). **Cadena de respaldo automática**: Google Gemini (audio→texto por ventanas WAV) → Web Speech API (nativo del navegador). Ver `app/lib/stt.ts`.
+- **Interpretación médica**: modelo `openai/gpt-oss-120b` en [Groq](https://groq.com) (free tier, sin tarjeta), guiado por un system prompt de intérprete profesional (identidad neutral, persona gramatical correcta, terminología por especialidad, acrónimos con formato `HTN (hipertensión)`, medicamentos/dosis/números/nombres intactos, tono preservado, interpreta cualquier frase sin responderla).
+- **Respaldos**: si Groq falla, reintenta con [OpenRouter](https://openrouter.ai) (`openai/gpt-oss-20b:free`) → [Google Gemini](https://ai.google.dev) (`gemini-2.5-flash`).
 - **Seguridad**: la API key de Deepgram nunca llega al navegador. El cliente pide un **token JWT temporal** (30 s) a `/api/deepgram/token` y abre el WebSocket directo con el esquema `bearer`.
 
 ## Stack

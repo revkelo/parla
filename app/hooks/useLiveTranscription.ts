@@ -135,6 +135,7 @@ export function useLiveTranscription(): UseLiveTranscription {
           /* si falla la consulta, igual intentamos Deepgram primero */
         }
         if (deepgramOk) chain.push("deepgram");
+        chain.push("google"); // respaldo con Gemini (WAV por ventanas)
         if (isWebSpeechSupported()) chain.push("webspeech");
       }
 

@@ -11,10 +11,11 @@ const STATUS_LABEL: Record<string, string> = {
   error: "Error",
 };
 
+type AiEngine = "groq" | "openrouter" | "google";
 type Interpretation = {
   text: string;
   detected: "es" | "en";
-  engine?: "groq" | "openrouter";
+  engine?: AiEngine;
 };
 type Usage = {
   deepgram: { amount: number; units: string } | null;
@@ -42,9 +43,9 @@ export default function Home() {
   // Modo pruebas: forzar motores concretos para comparar.
   const [testMode, setTestMode] = useState(false);
   const [sttChoice, setSttChoice] = useState<"auto" | EngineName>("auto");
-  const [aiChoice, setAiChoice] = useState<"auto" | "groq" | "openrouter">(
-    "auto"
-  );
+  const [aiChoice, setAiChoice] = useState<
+    "auto" | "groq" | "openrouter" | "google"
+  >("auto");
   const [interpretations, setInterpretations] = useState<
     Record<number, Interpretation>
   >({});
@@ -77,7 +78,7 @@ export default function Home() {
           (d: {
             interpretation: string;
             detected: "es" | "en";
-            engine?: "groq" | "openrouter";
+            engine?: AiEngine;
             groqUsage?: Usage["groq"];
           }) => {
             setInterpretations((prev) => ({
@@ -354,16 +355,26 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
-function EngineTag({ engine }: { engine: "groq" | "openrouter" }) {
-  const isBackup = engine === "openrouter";
+function EngineTag({ engine }: { engine: AiEngine }) {
+  const label =
+    engine === "groq"
+      ? "groq"
+      : engine === "openrouter"
+        ? "openrouter"
+        : "google";
+  const isBackup = engine !== "groq";
   return (
     <span
-      title={isBackup ? "Resuelto por el respaldo OpenRouter" : "Motor: Groq"}
+      title={
+        isBackup
+          ? `Resuelto por el respaldo ${label}`
+          : "Motor de interpretación: Groq"
+      }
       className={`shrink-0 font-mono text-[9px] uppercase tracking-[0.12em] ${
         isBackup ? "text-amber-500" : "text-faint"
       }`}
     >
-      {isBackup ? "respaldo" : "groq"}
+      {label}
     </span>
   );
 }
@@ -394,8 +405,8 @@ function TestPanel({
 }: {
   sttChoice: "auto" | EngineName;
   setSttChoice: (v: "auto" | EngineName) => void;
-  aiChoice: "auto" | "groq" | "openrouter";
-  setAiChoice: (v: "auto" | "groq" | "openrouter") => void;
+  aiChoice: "auto" | "groq" | "openrouter" | "google";
+  setAiChoice: (v: "auto" | "groq" | "openrouter" | "google") => void;
   sttLocked: boolean;
 }) {
   return (
@@ -409,19 +420,23 @@ function TestPanel({
         options={[
           { value: "auto", label: "Automático (cadena)" },
           { value: "deepgram", label: "Deepgram (streaming)" },
+          { value: "google", label: "Google Gemini (trozos)" },
           { value: "webspeech", label: "Navegador (Web Speech)" },
         ]}
       />
       <TestSelect
         label="Interpretación (IA)"
         value={aiChoice}
-        onChange={(v) => setAiChoice(v as "auto" | "groq" | "openrouter")}
+        onChange={(v) =>
+          setAiChoice(v as "auto" | "groq" | "openrouter" | "google")
+        }
         disabled={false}
         hint="aplica al siguiente turno"
         options={[
-          { value: "auto", label: "Automático (Groq→respaldo)" },
+          { value: "auto", label: "Automático (Groq→respaldos)" },
           { value: "groq", label: "Groq (gpt-oss-120b)" },
           { value: "openrouter", label: "OpenRouter (free)" },
+          { value: "google", label: "Google (Gemini)" },
         ]}
       />
     </div>
