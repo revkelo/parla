@@ -409,7 +409,6 @@ function TestPanel({
         options={[
           { value: "auto", label: "Automático (cadena)" },
           { value: "deepgram", label: "Deepgram (streaming)" },
-          { value: "groq", label: "Groq Whisper (trozos)" },
           { value: "webspeech", label: "Navegador (Web Speech)" },
         ]}
       />

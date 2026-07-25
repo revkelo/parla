@@ -3,11 +3,10 @@
 // Motores de transcripción (STT) con una interfaz común, para una cadena de
 // respaldo: Deepgram (streaming) → Groq Whisper (por trozos) → Web Speech API.
 
-export type EngineName = "deepgram" | "groq" | "webspeech";
+export type EngineName = "deepgram" | "webspeech";
 
 export const ENGINE_LABEL: Record<EngineName, string> = {
   deepgram: "Deepgram",
-  groq: "Groq Whisper",
   webspeech: "Navegador",
 };
 
@@ -140,69 +139,6 @@ export async function startDeepgram(
   };
 }
 
-/* ───────────────────────── Groq Whisper (por trozos) ──────────────────────── */
-
-export async function startGroqWhisper(
-  handlers: SttHandlers
-): Promise<SttController> {
-  const stream = await getMic();
-  const mime = pickMime();
-  const WINDOW_MS = 4000;
-
-  let stopped = false;
-  let recorder: MediaRecorder | null = null;
-  let opened = false;
-
-  const recordWindow = () => {
-    if (stopped) return;
-    const chunks: Blob[] = [];
-    recorder = new MediaRecorder(stream, { mimeType: mime });
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunks.push(e.data);
-    };
-    recorder.onstop = async () => {
-      if (chunks.length) {
-        const blob = new Blob(chunks, { type: mime });
-        const fd = new FormData();
-        fd.append("audio", blob, "audio.webm");
-        try {
-          const res = await fetch("/api/transcribe", {
-            method: "POST",
-            body: fd,
-          });
-          if (res.ok) {
-            const { text } = (await res.json()) as { text: string };
-            if (text) handlers.onFinal(text);
-          }
-        } catch {
-          /* una ventana fallida no corta la sesión */
-        }
-      }
-      if (!stopped) recordWindow();
-    };
-    recorder.start();
-    if (!opened) {
-      opened = true;
-      handlers.onOpen?.();
-    }
-    handlers.onInterim("Escuchando…");
-    setTimeout(() => {
-      if (recorder && recorder.state !== "inactive") recorder.stop();
-    }, WINDOW_MS);
-  };
-
-  recordWindow();
-
-  return {
-    stop: () => {
-      stopped = true;
-      handlers.onInterim("");
-      if (recorder && recorder.state !== "inactive") recorder.stop();
-      stream.getTracks().forEach((t) => t.stop());
-    },
-  };
-}
-
 /* ───────────────────────── Web Speech API (navegador) ─────────────────────── */
 
 type SpeechRecognitionLike = {
@@ -299,6 +235,5 @@ export async function startEngine(
   language: string
 ): Promise<SttController> {
   if (name === "deepgram") return startDeepgram(handlers, language);
-  if (name === "groq") return startGroqWhisper(handlers);
   return startWebSpeech(handlers);
 }
