@@ -1,6 +1,6 @@
-# Parla · Intérprete en vivo
+# Parla · Intérprete médico en vivo
 
-Transcripción y traducción **español ⇄ inglés en tiempo real** desde el micrófono del navegador. Cada frase que dices se transcribe al instante y aparece emparejada con su traducción en la línea de abajo — como una cabina de intérprete.
+Interpretación médica profesional **español ⇄ inglés en tiempo real** (OPI/VRI) desde el micrófono del navegador. Cada intervención se transcribe al instante y se interpreta al otro idioma con terminología clínica, en primera persona, respetando dosis, números, nombres propios y tono — como un intérprete médico certificado.
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js) ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript) ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -11,12 +11,14 @@ Micrófono ──► MediaRecorder ──WebSocket──► Deepgram (nova-3, st
                                                 │
                             interim + final ◄───┘
                                     │
-              por cada frase final  ▼
-                          /api/translate ──► franc + MyMemory ──► traducción
+        por cada intervención final ▼
+                          /api/interpret ──► Groq (principal)
+                                               └─ si falla ─► OpenRouter (respaldo free)
 ```
 
-- **Transcripción**: [Deepgram](https://deepgram.com) nova-3 vía WebSocket streaming, con detección multilenguaje (`language=multi`) y baja latencia.
-- **Traducción**: sin IA — [MyMemory](https://mymemory.translated.net) (gratis, sin API key) + [`franc`](https://github.com/wooorm/franc) para detectar el idioma y elegir la dirección (ES→EN / EN→ES).
+- **Transcripción**: [Deepgram](https://deepgram.com) nova-3 vía WebSocket streaming, con detección de idioma (`language=multi`) para captar el cambio médico ⇄ paciente.
+- **Interpretación médica**: modelo `openai/gpt-oss-120b` en [Groq](https://groq.com) (free tier, sin tarjeta), guiado por un system prompt de intérprete profesional (identidad neutral, primera persona, terminología por especialidad, acrónimos con formato `HTN (hipertensión)`, medicamentos/dosis/números/nombres intactos, tono preservado).
+- **Respaldo**: si Groq falla, reintenta automáticamente con [OpenRouter](https://openrouter.ai) en modo free (`openai/gpt-oss-20b:free`).
 - **Seguridad**: la API key de Deepgram nunca llega al navegador. El cliente pide un **token JWT temporal** (30 s) a `/api/deepgram/token` y abre el WebSocket directo con el esquema `bearer`.
 
 ## Stack
@@ -27,26 +29,21 @@ Micrófono ──► MediaRecorder ──WebSocket──► Deepgram (nova-3, st
 | Lenguaje | TypeScript |
 | Estilos | Tailwind CSS v4 |
 | Transcripción | Deepgram SDK (`@deepgram/sdk`) |
-| Traducción | MyMemory API + `franc-min` |
+| Interpretación | AI SDK v7 + Groq (`@ai-sdk/groq`), respaldo OpenRouter |
+| Detección de idioma | `franc-min` (etiqueta de la interfaz) |
 | Deploy | Vercel |
 
 ## Desarrollo local
 
-Requiere Node.js 20+ y una cuenta de [Deepgram](https://console.deepgram.com/).
+Requiere Node.js 20+.
 
 ```bash
-# 1. Instalar dependencias
 npm install
-
-# 2. Configurar la API key
-cp .env.example .env.local
-# edita .env.local y pega tu DEEPGRAM_API_KEY
-
-# 3. Arrancar
+cp .env.example .env.local   # y rellena las API keys
 npm run dev
 ```
 
-Abre [http://localhost:3000](http://localhost:3000), pulsa **Grabar** y habla.
+Abre [http://localhost:3000](http://localhost:3000), pulsa **Iniciar sesión** y habla en español o inglés.
 
 > El acceso al micrófono requiere `localhost` o HTTPS (en producción funciona automáticamente).
 
@@ -54,15 +51,21 @@ Abre [http://localhost:3000](http://localhost:3000), pulsa **Grabar** y habla.
 
 | Variable | Requerida | Descripción |
 |----------|-----------|-------------|
-| `DEEPGRAM_API_KEY` | Sí | API key de Deepgram. Se usa solo en el servidor. |
+| `DEEPGRAM_API_KEY` | Sí | Transcripción. [console.deepgram.com](https://console.deepgram.com/) |
+| `GROQ_API_KEY` | Sí | Interpretación (motor principal). [console.groq.com/keys](https://console.groq.com/keys) — gratis, sin tarjeta |
+| `OPENROUTER_API_KEY` | No | Respaldo free. [openrouter.ai/keys](https://openrouter.ai/keys) |
 
 ## Rutas de API
 
 | Ruta | Método | Descripción |
 |------|--------|-------------|
-| `/api/deepgram/token` | GET | Emite un token JWT temporal para el WebSocket. |
-| `/api/deepgram/balance` | GET | Devuelve el saldo restante de Deepgram. |
-| `/api/translate` | POST | Traduce un texto ES⇄EN (`{ text }` → `{ translation, detected }`). |
+| `/api/deepgram/token` | GET | Token JWT temporal para el WebSocket. |
+| `/api/deepgram/balance` | GET | Saldo restante de Deepgram. |
+| `/api/interpret` | POST | Interpreta ES⇄EN (`{ text }` → `{ interpretation, detected, engine }`). |
+
+## Aviso
+
+Herramienta de asistencia a la interpretación. No sustituye a un intérprete médico certificado para decisiones clínicas críticas. Todo el contenido es confidencial.
 
 ## Licencia
 

@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Parla · Intérprete en vivo",
+  title: "Parla · Intérprete médico en vivo",
   description:
-    "Transcripción y traducción español ⇄ inglés en tiempo real desde tu micrófono.",
+    "Interpretación médica profesional español ⇄ inglés en tiempo real (OPI/VRI).",
 };
 
 export default function RootLayout({

@@ -10,58 +10,48 @@ const STATUS_LABEL: Record<string, string> = {
   error: "Error",
 };
 
-// Idiomas para el reconocimiento (Deepgram nova-3). "multi" cambia de idioma solo.
-const LANGUAGES: { code: string; label: string }[] = [
-  { code: "multi", label: "Multilenguaje" },
-  { code: "es", label: "Español" },
-  { code: "en", label: "Inglés" },
-  { code: "pt", label: "Portugués" },
-  { code: "fr", label: "Francés" },
-  { code: "de", label: "Alemán" },
-  { code: "it", label: "Italiano" },
-];
-
-type Translation = { text: string; detected: "es" | "en" };
+type Interpretation = { text: string; detected: "es" | "en" };
 type Balance = { amount: number; units: string };
 
 // Precio aprox. de Deepgram nova-3 streaming (USD por minuto) para estimar horas.
 const PRICE_PER_MIN = 0.0077;
 
+const LANG_NAME: Record<string, string> = { es: "Español", en: "English" };
+
 export default function Home() {
   const { status, segments, interim, error, start, stop, reset } =
     useLiveTranscription();
-  const [language, setLanguage] = useState("multi");
   const [balance, setBalance] = useState<Balance | null>(null);
-  const [translations, setTranslations] = useState<Record<number, Translation>>(
-    {}
-  );
+  const [interpretations, setInterpretations] = useState<
+    Record<number, Interpretation>
+  >({});
   const requestedRef = useRef<Set<number>>(new Set());
   const streamEndRef = useRef<HTMLDivElement>(null);
 
   const isActive = status === "listening" || status === "connecting";
   const hasContent = segments.length > 0 || interim.length > 0;
 
-  // Traduce cada segmento finalizado una sola vez.
+  // Interpreta cada frase finalizada una sola vez (ES⇄EN, modo médico).
   useEffect(() => {
     segments.forEach((seg) => {
       if (requestedRef.current.has(seg.id)) return;
       requestedRef.current.add(seg.id);
-      fetch("/api/translate", {
+      fetch("/api/interpret", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ text: seg.text }),
       })
         .then((r) => (r.ok ? r.json() : Promise.reject()))
-        .then((d: { translation: string; detected: "es" | "en" }) =>
-          setTranslations((prev) => ({
+        .then((d: { interpretation: string; detected: "es" | "en" }) =>
+          setInterpretations((prev) => ({
             ...prev,
-            [seg.id]: { text: d.translation, detected: d.detected },
+            [seg.id]: { text: d.interpretation, detected: d.detected },
           }))
         )
         .catch(() =>
-          setTranslations((prev) => ({
+          setInterpretations((prev) => ({
             ...prev,
-            [seg.id]: { text: "No se pudo traducir", detected: "es" },
+            [seg.id]: { text: "No se pudo interpretar", detected: "es" },
           }))
         );
     });
@@ -72,7 +62,7 @@ export default function Home() {
     streamEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [segments, interim]);
 
-  // Consulta el saldo de Deepgram al cargar y cada vez que se detiene (status idle).
+  // Consulta el saldo de Deepgram al cargar y al detenerse (status idle).
   useEffect(() => {
     if (status !== "idle") return;
     fetch("/api/deepgram/balance")
@@ -84,12 +74,12 @@ export default function Home() {
   const handleReset = () => {
     reset();
     requestedRef.current = new Set();
-    setTranslations({});
+    setInterpretations({});
   };
 
   const handleCopy = () => {
     const lines = segments.map((s) => {
-      const t = translations[s.id]?.text ?? "";
+      const t = interpretations[s.id]?.text ?? "";
       return `${s.text}\n${t}`;
     });
     navigator.clipboard.writeText(lines.join("\n\n"));
@@ -105,7 +95,7 @@ export default function Home() {
               parla
             </h1>
             <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted">
-              intérprete en vivo
+              intérprete médico · es ⇄ en
             </span>
           </div>
           {balance && (
@@ -139,27 +129,13 @@ export default function Home() {
             {STATUS_LABEL[status]}
           </span>
 
-          <select
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            disabled={isActive}
-            aria-label="Idioma de reconocimiento"
-            className="rounded-md border border-hairline bg-transparent px-2 py-1.5 font-mono text-xs tracking-wide outline-none transition-colors focus-visible:border-foreground/40 disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            {LANGUAGES.map((l) => (
-              <option key={l.code} value={l.code}>
-                {l.label}
-              </option>
-            ))}
-          </select>
-
           {!isActive ? (
             <button
-              onClick={() => start(language)}
+              onClick={() => start("multi")}
               className="flex items-center gap-2 rounded-md bg-foreground px-4 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90"
             >
               <span className="inline-block h-2 w-2 rounded-full bg-live" />
-              Grabar
+              Iniciar sesión
             </button>
           ) : (
             <button
@@ -167,7 +143,7 @@ export default function Home() {
               className="flex items-center gap-2 rounded-md border border-hairline px-4 py-1.5 text-sm font-medium transition-colors hover:bg-foreground/5"
             >
               <span className="inline-block h-2 w-2 rounded-[2px] bg-live" />
-              Detener
+              Finalizar
             </button>
           )}
         </div>
@@ -179,27 +155,24 @@ export default function Home() {
         </p>
       )}
 
-      {/* Hilo bilingüe */}
+      {/* Hilo de interpretación */}
       <div className="flex-1 py-6">
         {!hasContent ? (
           <EmptyState />
         ) : (
           <ol className="flex flex-col gap-6">
             {segments.map((seg) => {
-              const tr = translations[seg.id];
-              const src = tr?.detected ?? "es";
-              const target = src === "es" ? "EN" : "ES";
+              const it = interpretations[seg.id];
+              const src = it?.detected ?? "es";
+              const target = src === "es" ? "en" : "es";
               return (
-                <li
-                  key={seg.id}
-                  className="border-l-2 border-hairline pl-4 transition-colors"
-                >
-                  <Line lang={src.toUpperCase()} text={seg.text} />
+                <li key={seg.id} className="border-l-2 border-hairline pl-4">
+                  <Line lang={LANG_NAME[src]} text={seg.text} />
                   <Line
-                    lang={`→ ${target}`}
-                    text={tr?.text}
-                    muted
-                    loading={!tr}
+                    lang={LANG_NAME[target]}
+                    text={it?.text}
+                    interpreted
+                    loading={!it}
                   />
                 </li>
               );
@@ -217,21 +190,26 @@ export default function Home() {
 
       {/* Pie de acciones */}
       {segments.length > 0 && (
-        <footer className="sticky bottom-0 flex items-center justify-end gap-4 border-t border-hairline bg-background/85 py-3 backdrop-blur">
-          {!isActive && (
+        <footer className="sticky bottom-0 flex items-center justify-between gap-4 border-t border-hairline bg-background/85 py-3 backdrop-blur">
+          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted/70">
+            Confidencial · uso profesional
+          </span>
+          <div className="flex items-center gap-4">
+            {!isActive && (
+              <button
+                onClick={handleReset}
+                className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-foreground"
+              >
+                Limpiar
+              </button>
+            )}
             <button
-              onClick={handleReset}
+              onClick={handleCopy}
               className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-foreground"
             >
-              Limpiar
+              Copiar
             </button>
-          )}
-          <button
-            onClick={handleCopy}
-            className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted transition-colors hover:text-foreground"
-          >
-            Copiar
-          </button>
+          </div>
         </footer>
       )}
     </main>
@@ -241,28 +219,28 @@ export default function Home() {
 function Line({
   lang,
   text,
-  muted,
+  interpreted,
   live,
   loading,
 }: {
   lang: string;
   text?: string;
-  muted?: boolean;
+  interpreted?: boolean;
   live?: boolean;
   loading?: boolean;
 }) {
   return (
     <div className="flex gap-3 py-0.5">
       <span
-        className={`mt-1 w-9 shrink-0 select-none font-mono text-[10px] uppercase tracking-[0.12em] ${
-          live ? "text-live" : "text-muted"
+        className={`mt-1 w-16 shrink-0 select-none font-mono text-[10px] uppercase tracking-[0.1em] ${
+          live ? "text-live" : interpreted ? "text-foreground/50" : "text-muted"
         }`}
       >
-        {lang}
+        {interpreted ? `→ ${lang}` : lang}
       </span>
       <p
         className={`text-[15px] leading-relaxed ${
-          muted ? "text-muted" : "text-foreground"
+          interpreted ? "text-muted" : "text-foreground"
         } ${live ? "text-foreground/70" : ""}`}
       >
         {loading ? (
@@ -291,11 +269,12 @@ function EmptyState() {
   return (
     <div className="flex flex-col items-start gap-3 pt-10 text-muted">
       <p className="font-mono text-xs uppercase tracking-[0.16em]">
-        Sin transcripción
+        Intérprete médico en espera
       </p>
-      <p className="max-w-sm text-[15px] leading-relaxed">
-        Pulsa <span className="text-foreground">Grabar</span> y habla. Cada frase
-        aparece con su traducción español ⇄ inglés en la línea de abajo.
+      <p className="max-w-md text-[15px] leading-relaxed">
+        Pulsa <span className="text-foreground">Iniciar sesión</span> y habla en
+        español o inglés. Cada intervención se interpreta al otro idioma con
+        terminología clínica, en primera persona y con los acrónimos expandidos.
       </p>
     </div>
   );
