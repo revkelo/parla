@@ -31,9 +31,10 @@ export interface UseLiveTranscription {
 // Modelo por defecto. nova-3 soporta modo multilingüe con code-switching.
 const DEEPGRAM_MODEL = "nova-3";
 const DEFAULT_LANGUAGE = "multi";
-// Silencio (ms) para considerar terminado un enunciado. Más alto = no corta
-// en micro-pausas, pero añade un poco de latencia al cierre de cada frase.
-const ENDPOINTING_MS = 1000;
+// Silencio (ms) para considerar terminado un enunciado. 500 ms es el punto
+// recomendado: no corta en micro-pausas naturales (<400 ms) pero cierra rápido
+// al terminar de hablar. utterance_end_ms (mín. 1000) es la red de seguridad.
+const ENDPOINTING_MS = 500;
 const UTTERANCE_END_MS = 1000;
 
 export function useLiveTranscription(): UseLiveTranscription {
