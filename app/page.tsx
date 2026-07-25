@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLiveTranscription } from "./hooks/useLiveTranscription";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -37,6 +37,7 @@ export default function Home() {
   const { status, segments, interim, error, start, stop, reset } =
     useLiveTranscription();
   const [usage, setUsage] = useState<Usage | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [interpretations, setInterpretations] = useState<
     Record<number, Interpretation>
   >({});
@@ -91,14 +92,20 @@ export default function Home() {
     streamEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [segments, interim]);
 
-  // Consulta el uso de los servicios al cargar y al detenerse (status idle).
-  useEffect(() => {
-    if (status !== "idle") return;
+  // Consulta el uso de los servicios (Deepgram, Groq, OpenRouter).
+  const loadUsage = useCallback(() => {
+    setRefreshing(true);
     fetch("/api/usage")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((d: Usage) => setUsage(d))
-      .catch(() => {});
-  }, [status]);
+      .catch(() => {})
+      .finally(() => setRefreshing(false));
+  }, []);
+
+  // Actualiza al cargar y cada vez que se detiene una sesión.
+  useEffect(() => {
+    if (status === "idle") loadUsage();
+  }, [status, loadUsage]);
 
   const handleReset = () => {
     reset();
@@ -158,11 +165,29 @@ export default function Home() {
             )}
           </div>
         </div>
-        {usage && (
-          <div className="border-t border-hairline/60 py-2.5">
-            <UsageBar usage={usage} />
+        <div className="border-t border-hairline/60 py-2.5">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="font-mono text-[9.5px] uppercase tracking-[0.16em] text-faint">
+              Uso de servicios
+            </span>
+            <button
+              onClick={loadUsage}
+              disabled={refreshing}
+              aria-label="Actualizar uso"
+              className="flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[9.5px] uppercase tracking-[0.13em] text-muted transition-colors hover:bg-foreground/[0.05] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-50"
+            >
+              <RefreshIcon spinning={refreshing} />
+              Actualizar
+            </button>
           </div>
-        )}
+          {usage ? (
+            <UsageBar usage={usage} />
+          ) : (
+            <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
+              {refreshing ? "Consultando…" : "—"}
+            </p>
+          )}
+        </div>
       </header>
 
       {error && (
@@ -300,6 +325,26 @@ function FooterButton({
     >
       {children}
     </button>
+  );
+}
+
+function RefreshIcon({ spinning }: { spinning: boolean }) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={spinning ? "animate-spin" : ""}
+    >
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <path d="M21 3v6h-6" />
+    </svg>
   );
 }
 
