@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Parla · Intérprete en vivo
 
-## Getting Started
+Transcripción y traducción **español ⇄ inglés en tiempo real** desde el micrófono del navegador. Cada frase que dices se transcribe al instante y aparece emparejada con su traducción en la línea de abajo — como una cabina de intérprete.
 
-First, run the development server:
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js) ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript) ![License](https://img.shields.io/badge/license-MIT-green)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Cómo funciona
+
+```
+Micrófono ──► MediaRecorder ──WebSocket──► Deepgram (nova-3, streaming)
+                                                │
+                            interim + final ◄───┘
+                                    │
+              por cada frase final  ▼
+                          /api/translate ──► franc + MyMemory ──► traducción
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- **Transcripción**: [Deepgram](https://deepgram.com) nova-3 vía WebSocket streaming, con detección multilenguaje (`language=multi`) y baja latencia.
+- **Traducción**: sin IA — [MyMemory](https://mymemory.translated.net) (gratis, sin API key) + [`franc`](https://github.com/wooorm/franc) para detectar el idioma y elegir la dirección (ES→EN / EN→ES).
+- **Seguridad**: la API key de Deepgram nunca llega al navegador. El cliente pide un **token JWT temporal** (30 s) a `/api/deepgram/token` y abre el WebSocket directo con el esquema `bearer`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Stack
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Área | Tecnología |
+|------|-----------|
+| Framework | Next.js 16 (App Router, Turbopack) |
+| Lenguaje | TypeScript |
+| Estilos | Tailwind CSS v4 |
+| Transcripción | Deepgram SDK (`@deepgram/sdk`) |
+| Traducción | MyMemory API + `franc-min` |
+| Deploy | Vercel |
 
-## Learn More
+## Desarrollo local
 
-To learn more about Next.js, take a look at the following resources:
+Requiere Node.js 20+ y una cuenta de [Deepgram](https://console.deepgram.com/).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+# 1. Instalar dependencias
+npm install
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# 2. Configurar la API key
+cp .env.example .env.local
+# edita .env.local y pega tu DEEPGRAM_API_KEY
 
-## Deploy on Vercel
+# 3. Arrancar
+npm run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Abre [http://localhost:3000](http://localhost:3000), pulsa **Grabar** y habla.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+> El acceso al micrófono requiere `localhost` o HTTPS (en producción funciona automáticamente).
+
+## Variables de entorno
+
+| Variable | Requerida | Descripción |
+|----------|-----------|-------------|
+| `DEEPGRAM_API_KEY` | Sí | API key de Deepgram. Se usa solo en el servidor. |
+
+## Rutas de API
+
+| Ruta | Método | Descripción |
+|------|--------|-------------|
+| `/api/deepgram/token` | GET | Emite un token JWT temporal para el WebSocket. |
+| `/api/deepgram/balance` | GET | Devuelve el saldo restante de Deepgram. |
+| `/api/translate` | POST | Traduce un texto ES⇄EN (`{ text }` → `{ translation, detected }`). |
+
+## Licencia
+
+[MIT](./LICENSE)
