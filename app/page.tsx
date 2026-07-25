@@ -11,7 +11,19 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 type Interpretation = { text: string; detected: "es" | "en" };
-type Balance = { amount: number; units: string };
+type Usage = {
+  deepgram: { amount: number; units: string } | null;
+  groq: {
+    remainingRequests: number;
+    limitRequests: number;
+    resetRequests: string;
+  } | null;
+  openrouter: {
+    isFreeTier: boolean;
+    usageDaily: number;
+    limitRemaining: number | null;
+  } | null;
+};
 
 // Precio aprox. de Deepgram nova-3 streaming (USD por minuto) para estimar horas.
 const PRICE_PER_MIN = 0.0077;
@@ -21,7 +33,7 @@ const LANG_NAME: Record<string, string> = { es: "Español", en: "English" };
 export default function Home() {
   const { status, segments, interim, error, start, stop, reset } =
     useLiveTranscription();
-  const [balance, setBalance] = useState<Balance | null>(null);
+  const [usage, setUsage] = useState<Usage | null>(null);
   const [interpretations, setInterpretations] = useState<
     Record<number, Interpretation>
   >({});
@@ -62,12 +74,12 @@ export default function Home() {
     streamEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [segments, interim]);
 
-  // Consulta el saldo de Deepgram al cargar y al detenerse (status idle).
+  // Consulta el uso de los servicios al cargar y al detenerse (status idle).
   useEffect(() => {
     if (status !== "idle") return;
-    fetch("/api/deepgram/balance")
+    fetch("/api/usage")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d: Balance) => setBalance(d))
+      .then((d: Usage) => setUsage(d))
       .catch(() => {});
   }, [status]);
 
@@ -98,19 +110,7 @@ export default function Home() {
               intérprete médico · es ⇄ en
             </span>
           </div>
-          {balance && (
-            <span
-              className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted"
-              title="Saldo restante en Deepgram"
-            >
-              Deepgram · $
-              {balance.amount.toLocaleString("en-US", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}{" "}
-              · ~{Math.floor(balance.amount / PRICE_PER_MIN / 60)} h
-            </span>
-          )}
+          {usage && <UsageBar usage={usage} />}
         </div>
 
         <div className="flex items-center gap-2.5">
@@ -214,6 +214,81 @@ export default function Home() {
       )}
     </main>
   );
+}
+
+function UsageBar({ usage }: { usage: Usage }) {
+  const dg = usage.deepgram;
+  const gq = usage.groq;
+  const or = usage.openrouter;
+
+  const groqLow =
+    gq !== null && gq.remainingRequests / gq.limitRequests <= 0.15;
+  const groqOut = gq !== null && gq.remainingRequests <= 0;
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[10px] uppercase tracking-[0.1em] text-muted">
+      {dg && (
+        <Stat
+          dot="ok"
+          label="Deepgram"
+          value={`$${dg.amount.toLocaleString("en-US", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })} · ~${Math.floor(dg.amount / PRICE_PER_MIN / 60)} h`}
+        />
+      )}
+      {gq && (
+        <Stat
+          dot={groqOut ? "out" : groqLow ? "low" : "ok"}
+          label="Groq"
+          value={`${gq.remainingRequests}/${gq.limitRequests} req · ↻ ${shortReset(
+            gq.resetRequests
+          )}`}
+        />
+      )}
+      {or && (
+        <Stat
+          dot="backup"
+          label="OpenRouter"
+          value={`respaldo · ${or.isFreeTier ? "free" : "pago"} · ${
+            or.usageDaily > 0 ? `${or.usageDaily} hoy` : "en espera"
+          }`}
+        />
+      )}
+    </div>
+  );
+}
+
+function Stat({
+  dot,
+  label,
+  value,
+}: {
+  dot: "ok" | "low" | "out" | "backup";
+  label: string;
+  value: string;
+}) {
+  const color =
+    dot === "ok"
+      ? "bg-emerald-500"
+      : dot === "low"
+        ? "bg-amber-500"
+        : dot === "out"
+          ? "bg-live"
+          : "bg-muted/50";
+  return (
+    <span className="flex items-center gap-1.5" title={`${label}: ${value}`}>
+      <span className={`inline-block h-1.5 w-1.5 rounded-full ${color}`} />
+      <span className="text-foreground/70">{label}</span>
+      <span>{value}</span>
+    </span>
+  );
+}
+
+function shortReset(s: string): string {
+  if (!s) return "—";
+  // "25m55.199s" -> "25m56s"
+  return s.replace(/\.\d+/, "").replace(/(\d+)(ms)/, "0s");
 }
 
 function Line({
