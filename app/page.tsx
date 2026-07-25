@@ -68,7 +68,8 @@ export default function Home() {
             interpretation: string;
             detected: "es" | "en";
             engine?: "groq" | "openrouter";
-          }) =>
+            groqUsage?: Usage["groq"];
+          }) => {
             setInterpretations((prev) => ({
               ...prev,
               [seg.id]: {
@@ -76,7 +77,16 @@ export default function Home() {
                 detected: d.detected,
                 engine: d.engine,
               },
-            }))
+            }));
+            // Uso de Groq leído de la interpretación (sin request extra).
+            if (d.groqUsage) {
+              setUsage((prev) => ({
+                deepgram: prev?.deepgram ?? null,
+                openrouter: prev?.openrouter ?? null,
+                groq: d.groqUsage!,
+              }));
+            }
+          }
         )
         .catch(() =>
           setInterpretations((prev) => ({
@@ -102,10 +112,12 @@ export default function Home() {
       .finally(() => setRefreshing(false));
   }, []);
 
-  // Actualiza al cargar y cada vez que se detiene una sesión.
+  // Consulta inicial al cargar la página (una sola vez). Durante la sesión el
+  // uso de Groq se actualiza solo desde cada interpretación; el saldo de
+  // Deepgram se refresca con el botón "Actualizar".
   useEffect(() => {
-    if (status === "idle") loadUsage();
-  }, [status, loadUsage]);
+    loadUsage();
+  }, [loadUsage]);
 
   const handleReset = () => {
     reset();

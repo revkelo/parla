@@ -64,31 +64,53 @@ function detectSource(text: string): "es" | "en" {
   return looksSpanish ? "es" : "en";
 }
 
-/** Ejecuta la interpretación con un modelo concreto. */
-async function runInterpretation(
-  model: LanguageModel,
-  text: string
-): Promise<string> {
-  const { text: out } = await generateText({
+type GroqUsage = {
+  remainingRequests: number;
+  limitRequests: number;
+  resetRequests: string;
+} | null;
+
+/** Ejecuta la interpretación y devuelve el texto + headers de la respuesta. */
+async function runInterpretation(model: LanguageModel, text: string) {
+  const { text: out, response } = await generateText({
     model,
     system: SYSTEM_PROMPT,
     prompt: text,
     temperature: 0.2,
   });
-  return out.trim();
+  return { text: out.trim(), headers: response?.headers };
+}
+
+/** Extrae el uso de Groq de los headers de rate-limit (sin gastar requests extra). */
+function groqUsageFromHeaders(
+  headers?: Record<string, string>
+): GroqUsage {
+  if (!headers) return null;
+  const remaining = headers["x-ratelimit-remaining-requests"];
+  const limit = headers["x-ratelimit-limit-requests"];
+  if (!remaining || !limit) return null;
+  return {
+    remainingRequests: Number(remaining),
+    limitRequests: Number(limit),
+    resetRequests: headers["x-ratelimit-reset-requests"] ?? "",
+  };
 }
 
 /**
  * Interpreta con Groq (principal) y, si falla, reintenta con OpenRouter (free).
- * Devuelve el texto y qué motor lo resolvió.
+ * Devuelve el texto, qué motor lo resolvió y el uso de Groq leído de sus headers.
  */
-async function interpretWithFallback(
-  text: string
-): Promise<{ interpretation: string; engine: "groq" | "openrouter" }> {
+async function interpretWithFallback(text: string): Promise<{
+  interpretation: string;
+  engine: "groq" | "openrouter";
+  groqUsage: GroqUsage;
+}> {
   try {
+    const r = await runInterpretation(groq(GROQ_MODEL), text);
     return {
-      interpretation: await runInterpretation(groq(GROQ_MODEL), text),
+      interpretation: r.text,
       engine: "groq",
+      groqUsage: groqUsageFromHeaders(r.headers),
     };
   } catch (err) {
     if (!process.env.OPENROUTER_API_KEY) throw err;
@@ -96,13 +118,8 @@ async function interpretWithFallback(
     const openrouter = createOpenRouter({
       apiKey: process.env.OPENROUTER_API_KEY,
     });
-    return {
-      interpretation: await runInterpretation(
-        openrouter(OPENROUTER_MODEL),
-        text
-      ),
-      engine: "openrouter",
-    };
+    const r = await runInterpretation(openrouter(OPENROUTER_MODEL), text);
+    return { interpretation: r.text, engine: "openrouter", groqUsage: null };
   }
 }
 
@@ -129,8 +146,9 @@ export async function POST(req: Request) {
   const detected = detectSource(text);
 
   try {
-    const { interpretation, engine } = await interpretWithFallback(text);
-    return NextResponse.json({ interpretation, detected, engine });
+    const { interpretation, engine, groqUsage } =
+      await interpretWithFallback(text);
+    return NextResponse.json({ interpretation, detected, engine, groqUsage });
   } catch (err) {
     console.error("Error interpretando (Groq y respaldo):", err);
     return NextResponse.json(
