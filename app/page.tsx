@@ -159,7 +159,7 @@ export default function Home() {
           </div>
         </div>
         {usage && (
-          <div className="border-t border-hairline/60 py-2">
+          <div className="border-t border-hairline/60 py-2.5">
             <UsageBar usage={usage} />
           </div>
         )}
@@ -309,7 +309,7 @@ function UsageBar({ usage }: { usage: Usage }) {
   const groqOut = gq !== null && gq.remainingRequests <= 0;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
       {dg && (
         <Stat
           dot="ok"
@@ -317,23 +317,24 @@ function UsageBar({ usage }: { usage: Usage }) {
           value={`$${dg.amount.toLocaleString("en-US", {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
-          })} · ~${Math.floor(dg.amount / PRICE_PER_MIN / 60)} h`}
+          })}`}
+          sub={`~${Math.floor(dg.amount / PRICE_PER_MIN / 60)} h de transcripción`}
         />
       )}
       {gq && (
         <Stat
           dot={groqOut ? "out" : groqLow ? "low" : "ok"}
-          label="Groq"
-          value={`${gq.remainingRequests}/${gq.limitRequests} · ↻ ${shortReset(
-            gq.resetRequests
-          )}`}
+          label="Groq · principal"
+          value={`${gq.remainingRequests}/${gq.limitRequests} req`}
+          sub={`reinicia en ${shortReset(gq.resetRequests)}`}
         />
       )}
       {or && (
         <Stat
           dot="backup"
-          label="OpenRouter"
-          value={`respaldo · ${or.usageDaily > 0 ? `${or.usageDaily} hoy` : "en espera"}`}
+          label="OpenRouter · respaldo"
+          value={or.usageDaily > 0 ? `${or.usageDaily} hoy` : "en espera"}
+          sub={or.isFreeTier ? "modo free" : "modo pago"}
         />
       )}
     </div>
@@ -344,10 +345,12 @@ function Stat({
   dot,
   label,
   value,
+  sub,
 }: {
   dot: "ok" | "low" | "out" | "backup";
   label: string;
   value: string;
+  sub: string;
 }) {
   const color =
     dot === "ok"
@@ -358,16 +361,23 @@ function Stat({
           ? "bg-live"
           : "bg-faint";
   return (
-    <span
-      className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.06em]"
-      title={`${label}: ${value}`}
+    <div
+      className="flex items-start gap-2 rounded-lg border border-hairline/70 bg-surface/60 px-3 py-2"
+      title={`${label}: ${value} · ${sub}`}
     >
-      <span className={`inline-block h-1.5 w-1.5 rounded-full ${color}`} />
-      <span className="uppercase tracking-[0.1em] text-foreground/65">
-        {label}
-      </span>
-      <span className="text-faint">{value}</span>
-    </span>
+      <span className={`mt-1 inline-block h-2 w-2 shrink-0 rounded-full ${color}`} />
+      <div className="min-w-0 leading-tight">
+        <div className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-faint">
+          {label}
+        </div>
+        <div className="mt-0.5 truncate font-mono text-[13px] font-medium tabular-nums text-foreground/85">
+          {value}
+        </div>
+        <div className="truncate font-mono text-[10px] tracking-[0.04em] text-faint">
+          {sub}
+        </div>
+      </div>
+    </div>
   );
 }
 

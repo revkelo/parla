@@ -31,6 +31,10 @@ export interface UseLiveTranscription {
 // Modelo por defecto. nova-3 soporta modo multilingüe con code-switching.
 const DEEPGRAM_MODEL = "nova-3";
 const DEFAULT_LANGUAGE = "multi";
+// Silencio (ms) para considerar terminado un enunciado. Más alto = no corta
+// en micro-pausas, pero añade un poco de latencia al cierre de cada frase.
+const ENDPOINTING_MS = 1000;
+const UTTERANCE_END_MS = 1000;
 
 export function useLiveTranscription(): UseLiveTranscription {
   const [status, setStatus] = useState<TranscriptionStatus>("idle");
@@ -39,6 +43,7 @@ export function useLiveTranscription(): UseLiveTranscription {
   const [error, setError] = useState<string | null>(null);
 
   const segmentIdRef = useRef(0);
+  const pendingRef = useRef("");
   const socketRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -68,13 +73,25 @@ export function useLiveTranscription(): UseLiveTranscription {
     }
   }, []);
 
+  // Cierra el enunciado acumulado como un segmento y limpia el buffer.
+  const flushPending = useCallback(() => {
+    const text = pendingRef.current.trim();
+    pendingRef.current = "";
+    setInterim("");
+    if (!text) return;
+    setSegments((prev) => [...prev, { id: segmentIdRef.current++, text }]);
+  }, []);
+
   const stop = useCallback(() => {
+    // Rescata lo que quedó dicho antes de cerrar.
+    flushPending();
     cleanup();
     setInterim("");
     setStatus("idle");
-  }, [cleanup]);
+  }, [cleanup, flushPending]);
 
   const reset = useCallback(() => {
+    pendingRef.current = "";
     setSegments([]);
     setInterim("");
     setError(null);
@@ -111,6 +128,9 @@ export function useLiveTranscription(): UseLiveTranscription {
         smart_format: "true",
         interim_results: "true",
         punctuate: "true",
+        // Alarga la ventana de silencio para no cortar en pausas cortas.
+        endpointing: String(ENDPOINTING_MS),
+        utterance_end_ms: String(UTTERANCE_END_MS),
       });
       const socket = new WebSocket(
         `wss://api.deepgram.com/v1/listen?${params.toString()}`,
@@ -151,20 +171,37 @@ export function useLiveTranscription(): UseLiveTranscription {
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+
+          // Fin de enunciado por silencio prolongado: cerrar el segmento.
+          if (data.type === "UtteranceEnd") {
+            flushPending();
+            return;
+          }
           if (data.type !== "Results") return;
 
-          const alt = data.channel?.alternatives?.[0];
-          const text: string = alt?.transcript ?? "";
-          if (!text) return;
+          const text: string = data.channel?.alternatives?.[0]?.transcript ?? "";
 
           if (data.is_final) {
-            setSegments((prev) => [
-              ...prev,
-              { id: segmentIdRef.current++, text },
-            ]);
-            setInterim("");
+            // Deepgram puede finalizar por trozos: los acumulamos.
+            if (text) {
+              pendingRef.current = pendingRef.current
+                ? `${pendingRef.current} ${text}`
+                : text;
+            }
+            // Solo cerramos el segmento en el final real del habla.
+            if (data.speech_final) {
+              flushPending();
+            } else {
+              setInterim(pendingRef.current);
+            }
           } else {
-            setInterim(text);
+            // Provisional: mostramos lo acumulado + el fragmento en vivo.
+            const live = text
+              ? pendingRef.current
+                ? `${pendingRef.current} ${text}`
+                : text
+              : pendingRef.current;
+            setInterim(live);
           }
         } catch {
           // Ignorar mensajes que no sean JSON válido.
@@ -187,7 +224,7 @@ export function useLiveTranscription(): UseLiveTranscription {
       setStatus("error");
       cleanup();
     }
-  }, [cleanup]);
+  }, [cleanup, flushPending]);
 
   const transcript = segments.map((s) => s.text).join(" ");
 
