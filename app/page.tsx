@@ -1,712 +1,370 @@
-"use client";
+import Link from "next/link";
+import { SelectorIdioma } from "@/app/components/SelectorIdioma";
+import { LOCALE, fmt } from "@/app/lib/i18n";
+import { getIdioma, getTextos } from "@/app/lib/idioma-servidor";
+import { createClient } from "@/app/lib/supabase/server";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useLiveTranscription } from "./hooks/useLiveTranscription";
-import { ENGINE_LABEL, type EngineName } from "./lib/stt";
+export const dynamic = "force-dynamic";
 
-const STATUS_LABEL: Record<string, string> = {
-  idle: "Listo",
-  connecting: "Conectando",
-  listening: "En vivo",
-  error: "Error",
+type Plan = {
+  id: string;
+  name: string;
+  monthly_minutes: number;
+  price_cents: number;
 };
 
-type AiEngine = "groq" | "google";
-type Interpretation = {
-  text: string;
-  detected: "es" | "en";
-  engine?: AiEngine;
-};
-type Usage = {
-  deepgram: { amount: number; units: string } | null;
-  groq: {
-    remainingRequests: number;
-    limitRequests: number;
-    resetRequests: string;
-  } | null;
-  google: { configured: boolean } | null;
-};
+/**
+ * La consulta de muestra. El español siempre en la plana izquierda y el inglés
+ * en la derecha, como en una edición enfrentada; `origen` dice cuál de los dos
+ * se pronunció de verdad, y ese es el que va en cursiva.
+ */
+const CONSULTA = [
+  {
+    hora: "09:41:02",
+    origen: "es" as const,
+    es: "Doctor, me despierto con el pecho apretado y me falta el aire al subir escaleras.",
+    en: "Doctor, I wake up with chest tightness and I get short of breath going up stairs.",
+  },
+  {
+    hora: "09:41:19",
+    origen: "en" as const,
+    es: "¿Desde cuándo le pasa, y ha notado que se le hinchen los tobillos por la noche?",
+    en: "How long has that been going on, and have you noticed any ankle swelling at night?",
+  },
+  {
+    hora: "09:41:36",
+    origen: "en" as const,
+    es: "Vamos a empezar con 25 miligramos de metoprolol al día y a descartar CHF (insuficiencia cardíaca congestiva).",
+    en: "We'll start you on 25 milligrams of metoprolol daily and check for CHF.",
+  },
+];
 
-// Precio aprox. de Deepgram nova-3 streaming (USD por minuto) para estimar horas.
-const PRICE_PER_MIN = 0.0077;
-const LANG_TAG: Record<string, string> = { es: "ES", en: "EN" };
-
-function fmtDuration(totalSeconds: number): string {
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+function money(cents: number, gratis: string): string {
+  return cents === 0 ? gratis : `$${(cents / 100).toFixed(0)}`;
 }
 
-export default function Home() {
-  const { status, activeEngine, segments, interim, error, start, stop, reset } =
-    useLiveTranscription();
-  const [usage, setUsage] = useState<Usage | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  // Modo pruebas: forzar motores concretos para comparar.
-  const [testMode, setTestMode] = useState(false);
-  const [sttChoice, setSttChoice] = useState<"auto" | EngineName>("auto");
-  const [aiChoice, setAiChoice] = useState<"auto" | "groq" | "google">("auto");
-  const [interpretations, setInterpretations] = useState<
-    Record<number, Interpretation>
-  >({});
-  const [times, setTimes] = useState<Record<number, string>>({});
-  const [elapsed, setElapsed] = useState(0);
-  const requestedRef = useRef<Set<number>>(new Set());
-  const streamEndRef = useRef<HTMLDivElement>(null);
-  const startTsRef = useRef<number | null>(null);
+export default async function LandingPage() {
+  const [idioma, t] = await Promise.all([getIdioma(), getTextos()]);
+  const loc = LOCALE[idioma];
 
-  const isActive = status === "listening" || status === "connecting";
-  const hasContent = segments.length > 0 || interim.length > 0;
-
-  // Cronómetro de sesión (para registros/facturación del intérprete).
-  useEffect(() => {
-    if (status !== "listening") return;
-    if (startTsRef.current == null) startTsRef.current = Date.now();
-    const id = setInterval(() => {
-      if (startTsRef.current != null) {
-        setElapsed(Math.floor((Date.now() - startTsRef.current) / 1000));
-      }
-    }, 1000);
-    return () => clearInterval(id);
-  }, [status]);
-
-  // Interpreta cada intervención finalizada una sola vez (ES⇄EN, modo médico).
-  useEffect(() => {
-    segments.forEach((seg) => {
-      if (requestedRef.current.has(seg.id)) return;
-      requestedRef.current.add(seg.id);
-      setTimes((prev) => ({
-        ...prev,
-        [seg.id]: new Date().toLocaleTimeString("es", { hour12: false }),
-      }));
-      fetch("/api/interpret", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          text: seg.text,
-          engine: aiChoice === "auto" ? undefined : aiChoice,
-        }),
-      })
-        .then((r) => (r.ok ? r.json() : Promise.reject()))
-        .then(
-          (d: {
-            interpretation: string;
-            detected: "es" | "en";
-            engine?: AiEngine;
-            groqUsage?: Usage["groq"];
-          }) => {
-            setInterpretations((prev) => ({
-              ...prev,
-              [seg.id]: {
-                text: d.interpretation,
-                detected: d.detected,
-                engine: d.engine,
-              },
-            }));
-            // Uso de Groq leído de la interpretación (sin request extra).
-            if (d.groqUsage) {
-              setUsage((prev) => ({
-                deepgram: prev?.deepgram ?? null,
-                google: prev?.google ?? null,
-                groq: d.groqUsage!,
-              }));
-            }
-          }
-        )
-        .catch(() =>
-          setInterpretations((prev) => ({
-            ...prev,
-            [seg.id]: { text: "No se pudo interpretar", detected: "es" },
-          }))
-        );
-    });
-  }, [segments, aiChoice]);
-
-  // Auto-scroll al final del hilo.
-  useEffect(() => {
-    streamEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [segments, interim]);
-
-  // Consulta el uso de los servicios (Deepgram, Groq, OpenRouter).
-  const loadUsage = useCallback(() => {
-    setRefreshing(true);
-    fetch("/api/usage")
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((d: Usage) => setUsage(d))
-      .catch(() => {})
-      .finally(() => setRefreshing(false));
-  }, []);
-
-  // Consulta inicial al cargar la página (una sola vez). Durante la sesión el
-  // uso de Groq se actualiza solo desde cada interpretación; el saldo de
-  // Deepgram se refresca con el botón "Actualizar".
-  useEffect(() => {
-    loadUsage();
-  }, [loadUsage]);
-
-  const handleStart = () => {
-    startTsRef.current = null;
-    setElapsed(0);
-    start("multi", sttChoice === "auto" ? undefined : sttChoice);
+  /**
+   * La cuota como la piensa quien factura por hora. Por debajo de una hora no
+   * se añade la equivalencia: "5 min · 5 min" no informa de nada.
+   */
+  const cuota = (minutos: number) => {
+    const min = fmt(t.portada.minAlMes, { n: minutos.toLocaleString(loc) });
+    return minutos < 60
+      ? min
+      : `${min} · ${fmt(t.portada.horas, { n: Math.round(minutos / 60) })}`;
   };
 
-  const handleReset = () => {
-    reset();
-    requestedRef.current = new Set();
-    setInterpretations({});
-    setTimes({});
-    startTsRef.current = null;
-    setElapsed(0);
+  const PITCH: Record<string, string> = {
+    free: t.portada.pitchFree,
+    pro: t.portada.pitchPro,
+    scale: t.portada.pitchScale,
   };
 
-  const sessionLines = () =>
-    segments.map((s) => {
-      const it = interpretations[s.id];
-      const src = it?.detected ?? "es";
-      const tgt = src === "es" ? "EN" : "ES";
-      return `[${times[s.id] ?? ""}] (${LANG_TAG[src]}) ${s.text}\n(${tgt}) ${
-        it?.text ?? ""
-      }`;
-    });
+  const supabase = await createClient();
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(sessionLines().join("\n\n"));
-  };
+  const [{ data: plans }, { data: userData }] = await Promise.all([
+    supabase
+      .from("plans")
+      .select("id, name, monthly_minutes, price_cents")
+      .order("sort_order"),
+    supabase.auth.getUser(),
+  ]);
 
-  const handleDownload = () => {
-    const header =
-      `PARLA — Registro de interpretación médica (ES ⇄ EN)\n` +
-      `Fecha: ${new Date().toLocaleString("es")}\n` +
-      `Duración: ${fmtDuration(elapsed)} · Turnos: ${segments.length}\n` +
-      `${"—".repeat(48)}\n\n`;
-    const blob = new Blob([header + sessionLines().join("\n\n") + "\n"], {
-      type: "text/plain;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `parla-sesion-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const isLoggedIn = !!userData.user;
+  // Los minutos de prueba salen de la base para que la promesa de la portada
+  // no se desfase del plan real cuando se ajuste.
+  const libre = (plans ?? []).find((p: Plan) => p.price_cents === 0);
 
   return (
-    <main className="mx-auto flex min-h-full w-full max-w-2xl flex-col px-4 sm:px-6">
-      {/* ── Barra superior ── */}
-      <header className="sticky top-0 z-10 border-b border-hairline bg-background/80 backdrop-blur-md">
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3.5">
-          <div className="flex items-center gap-2.5">
-            <span
-              aria-hidden
-              className="grid h-6 w-6 place-items-center rounded-md bg-accent/15 font-mono text-[13px] font-semibold text-accent"
+    <>
+      <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col px-5 sm:px-8">
+        <header className="flex items-center justify-between py-6">
+          <div className="flex items-baseline gap-2.5">
+            <Link
+              href="/"
+              className="habla rounded text-[19px] font-medium lowercase tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             >
-              p
-            </span>
-            <div className="leading-tight">
-              <h1 className="text-[15px] font-semibold tracking-tight lowercase">
-                parla
+              parla
+            </Link>
+            {/* El rótulo del par de idiomas ES el conmutador. */}
+            <SelectorIdioma actual={idioma} variante="marca" />
+          </div>
+
+          <nav className="flex items-center gap-1">
+            <Link
+              href="/guia"
+              className="hidden rounded px-3 py-2 text-sm text-muted transition-colors hover:text-foreground sm:block"
+            >
+              {t.portada.guia}
+            </Link>
+            <a
+              href="#precios"
+              className="hidden rounded px-3 py-2 text-sm text-muted transition-colors hover:text-foreground sm:block"
+            >
+              {t.portada.precios}
+            </a>
+            {isLoggedIn ? (
+              <Link
+                href="/app"
+                className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background transition-opacity hover:opacity-90"
+              >
+                {t.comun.abrirParla}
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="rounded px-3 py-2 text-sm text-muted transition-colors hover:text-foreground"
+                >
+                  {t.portada.entrar}
+                </Link>
+                <Link
+                  href="/registro"
+                  className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background transition-opacity hover:opacity-90"
+                >
+                  {t.portada.empezarGratis}
+                </Link>
+              </>
+            )}
+          </nav>
+        </header>
+
+        {/* ═══ La doble página ═══
+            Un solo lomo recorre el titular y la consulta entera: el titular es
+            ya la demostración, y los turnos son su continuación natural. El
+            español siempre a la izquierda, el inglés a la derecha; la cursiva
+            marca lo que se pronunció y la romana lo que rindió parla. */}
+        <section className="pt-12 sm:pt-16">
+          <p className="sobre-lomo flex items-center justify-center gap-2 bg-background pb-10 font-mono text-[9.5px] uppercase tracking-[0.2em] text-accent">
+            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+            {t.portada.eyebrow}
+          </p>
+
+          <div className="lomo">
+            <div className="grid grid-cols-1 gap-y-5 pb-16 md:grid-cols-[1fr_auto_1fr] md:items-center md:gap-y-0 md:pb-20">
+              <h1 className="habla-origen text-balance text-muted text-[clamp(1.7rem,4.2vw,2.6rem)] font-normal leading-[1.14] tracking-tight md:pr-10 md:text-right">
+                Cada palabra, en el otro idioma. Ni una de más.
               </h1>
-              <p className="font-mono text-[9.5px] uppercase tracking-[0.16em] text-faint">
-                intérprete médico · es ⇄ en
+
+              <span
+                aria-hidden
+                className="hidden bg-background px-2.5 font-mono text-[13px] text-accent md:block"
+              >
+                ⇄
+              </span>
+
+              <p
+                lang="en"
+                className="rendir habla text-balance text-[clamp(1.7rem,4.2vw,2.6rem)] font-normal leading-[1.14] tracking-tight md:pl-10"
+                style={{ ["--desfase" as string]: "0.65s" }}
+              >
+                Every word, in the other language. Not one more.
               </p>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            {(isActive || segments.length > 0) && (
-              <span
-                title="Duración · turnos de la sesión"
-                className="hidden items-center gap-1.5 font-mono text-[11px] tabular-nums tracking-tight text-muted sm:flex"
+            {CONSULTA.map((t, i) => (
+              <div
+                key={t.hora}
+                className="grid grid-cols-1 gap-y-2 border-l border-hairline py-5 pl-4 md:grid-cols-[1fr_auto_1fr] md:gap-y-0 md:border-l-0 md:py-6 md:pl-0"
               >
-                <span className="text-foreground/80">{fmtDuration(elapsed)}</span>
-                <span className="text-faint">·</span>
-                <span>
-                  {segments.length}
-                  <span className="text-faint"> turnos</span>
-                </span>
-              </span>
-            )}
-            {activeEngine && (status === "listening" || status === "connecting") && (
-              <span
-                title={`Motor de transcripción: ${ENGINE_LABEL[activeEngine]}`}
-                className={`hidden font-mono text-[9.5px] uppercase tracking-[0.12em] sm:inline ${
-                  activeEngine === "deepgram" ? "text-faint" : "text-amber-500"
-                }`}
-              >
-                {activeEngine === "deepgram"
-                  ? "vía Deepgram"
-                  : `respaldo · ${ENGINE_LABEL[activeEngine]}`}
-              </span>
-            )}
-            <StatusPill status={status} />
-            <button
-              onClick={() => setTestMode((v) => !v)}
-              aria-pressed={testMode}
-              title="Modo pruebas: elegir motores manualmente"
-              className={`rounded-lg border px-2.5 py-2 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
-                testMode
-                  ? "border-accent/50 bg-accent-soft text-accent"
-                  : "border-hairline text-muted hover:text-foreground"
-              }`}
-            >
-              Pruebas
-            </button>
-            {!isActive ? (
-              <button
-                onClick={handleStart}
-                className="flex items-center gap-2 rounded-lg bg-foreground px-3.5 py-2 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
-              >
-                <span className="inline-block h-2 w-2 rounded-full bg-live" />
-                Iniciar
-              </button>
-            ) : (
-              <button
-                onClick={stop}
-                className="flex items-center gap-2 rounded-lg border border-hairline bg-surface px-3.5 py-2 text-sm font-medium transition-colors hover:bg-foreground/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
-              >
-                <span className="inline-block h-2 w-2 rounded-[2px] bg-live" />
-                Finalizar
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="border-t border-hairline/60 py-2.5">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="font-mono text-[9.5px] uppercase tracking-[0.16em] text-faint">
-              Uso de servicios
-            </span>
-            <button
-              onClick={loadUsage}
-              disabled={refreshing}
-              aria-label="Actualizar uso"
-              className="flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[9.5px] uppercase tracking-[0.13em] text-muted transition-colors hover:bg-foreground/[0.05] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-50"
-            >
-              <RefreshIcon spinning={refreshing} />
-              Actualizar
-            </button>
-          </div>
-          {usage ? (
-            <UsageBar usage={usage} />
-          ) : (
-            <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
-              {refreshing ? "Consultando…" : "—"}
-            </p>
-          )}
-        </div>
-        {testMode && (
-          <TestPanel
-            sttChoice={sttChoice}
-            setSttChoice={setSttChoice}
-            aiChoice={aiChoice}
-            setAiChoice={setAiChoice}
-            sttLocked={isActive}
-          />
-        )}
-      </header>
-
-      {error && (
-        <p className="mt-4 rounded-lg border border-live/25 bg-live/[0.06] px-3.5 py-2.5 font-mono text-xs text-live">
-          {error}
-        </p>
-      )}
-
-      {/* ── Hilo de interpretación ── */}
-      <div className="flex-1 py-5" aria-live="polite" aria-atomic="false">
-        {!hasContent ? (
-          <EmptyState />
-        ) : (
-          <ol className="flex flex-col gap-3">
-            {segments.map((seg) => {
-              const it = interpretations[seg.id];
-              const src = it?.detected ?? "es";
-              const target = src === "es" ? "en" : "es";
-              return (
-                <li
-                  key={seg.id}
-                  className="animate-rise overflow-hidden rounded-xl border border-hairline bg-surface"
+                <p
+                  className={`text-[16.5px] leading-[1.6] md:pr-10 md:text-right ${
+                    t.origen === "es" ? "habla-origen text-muted" : "habla rendir"
+                  }`}
+                  style={{ ["--desfase" as string]: `${0.85 + i * 0.12}s` }}
                 >
-                  <div className="flex items-center justify-between gap-3 px-4 pt-2.5">
-                    <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
-                      <span className="tabular-nums">{times[seg.id]}</span>
-                      <span aria-hidden>·</span>
-                      <span className="text-muted">
-                        {LANG_TAG[src]}{" "}
-                        <span className="text-accent">→</span> {LANG_TAG[target]}
-                      </span>
-                    </span>
-                    {it?.engine && <EngineTag engine={it.engine} />}
-                  </div>
-
-                  <div className="px-4 pb-3 pt-1.5">
-                    {/* Original (referencia) */}
-                    <p className="text-[13.5px] leading-relaxed text-muted">
-                      {seg.text}
-                    </p>
-                    {/* Interpretación (principal) */}
-                    <div className="mt-2 border-l-2 border-accent/40 pl-3">
-                      {it ? (
-                        <p className="text-[15.5px] leading-relaxed text-foreground">
-                          {it.text}
-                        </p>
-                      ) : (
-                        <span className="inline-flex gap-1 py-1 align-middle">
-                          <Dot /> <Dot delay="0.15s" /> <Dot delay="0.3s" />
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-
-            {interim && (
-              <li className="rounded-xl border border-accent/30 bg-accent-soft px-4 py-3">
-                <span className="mb-1 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-accent">
-                  <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-live" />
-                  Escuchando
-                </span>
-                <p className="text-[15px] leading-relaxed text-foreground/70">
-                  {interim}
-                  <span className="ml-0.5 inline-block animate-pulse">▍</span>
+                  {t.es}
                 </p>
-              </li>
-            )}
-            <div ref={streamEndRef} />
-          </ol>
-        )}
-      </div>
 
-      {/* ── Pie ── */}
-      {segments.length > 0 && (
-        <footer className="sticky bottom-0 flex items-center justify-between gap-4 border-t border-hairline bg-background/80 py-3 backdrop-blur-md">
-          <span className="font-mono text-[10px] uppercase tracking-[0.13em] text-faint">
-            Confidencial · uso profesional
-          </span>
-          <div className="flex items-center gap-1">
-            {!isActive && (
-              <FooterButton onClick={handleReset}>Limpiar</FooterButton>
-            )}
-            <FooterButton onClick={handleCopy}>Copiar</FooterButton>
-            <FooterButton onClick={handleDownload} primary>
-              Descargar
-            </FooterButton>
+                <span
+                  aria-hidden
+                  className="hidden self-start bg-background px-2.5 py-1 font-mono text-[9px] tabular-nums text-faint md:block"
+                >
+                  {t.hora}
+                </span>
+
+                <p
+                  lang="en"
+                  className={`text-[16.5px] leading-[1.6] md:pl-10 ${
+                    t.origen === "en" ? "habla-origen text-muted" : "habla rendir"
+                  }`}
+                  style={{ ["--desfase" as string]: `${0.85 + i * 0.12}s` }}
+                >
+                  {t.en}
+                </p>
+              </div>
+            ))}
           </div>
-        </footer>
-      )}
-    </main>
-  );
-}
 
-function StatusPill({ status }: { status: string }) {
-  const dot =
-    status === "listening"
-      ? "animate-pulse bg-live"
-      : status === "connecting"
-        ? "animate-pulse bg-amber-500"
-        : status === "error"
-          ? "bg-live"
-          : "bg-emerald-500";
-  return (
-    <span className="hidden items-center gap-1.5 rounded-full border border-hairline bg-surface px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-muted sm:flex">
-      <span className={`inline-block h-1.5 w-1.5 rounded-full ${dot}`} />
-      {STATUS_LABEL[status]}
-    </span>
-  );
-}
-
-function EngineTag({ engine }: { engine: AiEngine }) {
-  const isBackup = engine === "google";
-  return (
-    <span
-      title={
-        isBackup
-          ? "Resuelto por el respaldo Google (Gemini)"
-          : "Motor de interpretación: Groq"
-      }
-      className={`shrink-0 font-mono text-[9px] uppercase tracking-[0.12em] ${
-        isBackup ? "text-amber-500" : "text-faint"
-      }`}
-    >
-      {engine}
-    </span>
-  );
-}
-
-function FooterButton({
-  onClick,
-  children,
-  primary,
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-  primary?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-md px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.13em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
-        primary
-          ? "bg-accent/10 text-accent hover:bg-accent/15"
-          : "text-muted hover:bg-foreground/[0.05] hover:text-foreground"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function TestPanel({
-  sttChoice,
-  setSttChoice,
-  aiChoice,
-  setAiChoice,
-  sttLocked,
-}: {
-  sttChoice: "auto" | EngineName;
-  setSttChoice: (v: "auto" | EngineName) => void;
-  aiChoice: "auto" | "groq" | "google";
-  setAiChoice: (v: "auto" | "groq" | "google") => void;
-  sttLocked: boolean;
-}) {
-  return (
-    <div className="grid grid-cols-1 gap-2 border-t border-accent/25 bg-accent-soft/40 px-0.5 py-2.5 sm:grid-cols-2">
-      <TestSelect
-        label="Transcripción"
-        value={sttChoice}
-        onChange={(v) => setSttChoice(v as "auto" | EngineName)}
-        disabled={sttLocked}
-        hint={sttLocked ? "detén la sesión para cambiar" : "aplica al iniciar"}
-        options={[
-          { value: "auto", label: "Automático (Deepgram→Navegador)" },
-          { value: "deepgram", label: "Deepgram (streaming)" },
-          { value: "webspeech", label: "Navegador (Web Speech)" },
-        ]}
-      />
-      <TestSelect
-        label="Interpretación (IA)"
-        value={aiChoice}
-        onChange={(v) => setAiChoice(v as "auto" | "groq" | "google")}
-        disabled={false}
-        hint="aplica al siguiente turno"
-        options={[
-          { value: "auto", label: "Automático (Groq→Google)" },
-          { value: "groq", label: "Groq (gpt-oss-120b)" },
-          { value: "google", label: "Google (Gemini 2.5)" },
-        ]}
-      />
-    </div>
-  );
-}
-
-function TestSelect({
-  label,
-  value,
-  onChange,
-  options,
-  disabled,
-  hint,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  disabled: boolean;
-  hint: string;
-}) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="flex items-center justify-between font-mono text-[9.5px] uppercase tracking-[0.14em] text-accent">
-        {label}
-        <span className="normal-case tracking-normal text-faint">{hint}</span>
-      </span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        className="rounded-md border border-hairline bg-surface px-2.5 py-1.5 font-mono text-xs outline-none transition-colors focus-visible:border-accent/50 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function RefreshIcon({ spinning }: { spinning: boolean }) {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-      className={spinning ? "animate-spin" : ""}
-    >
-      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-      <path d="M21 3v6h-6" />
-    </svg>
-  );
-}
-
-function UsageBar({ usage }: { usage: Usage }) {
-  const { deepgram: dg, groq: gq, google: gg } = usage;
-  const groqLow = gq !== null && gq.remainingRequests / gq.limitRequests <= 0.15;
-  const groqOut = gq !== null && gq.remainingRequests <= 0;
-
-  return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-      {dg && (
-        <Stat
-          dot={dg.amount <= 0.02 ? "out" : "ok"}
-          label="Deepgram · voz"
-          value={`$${dg.amount.toLocaleString("en-US", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}`}
-          sub={`~${Math.floor(dg.amount / PRICE_PER_MIN / 60)} h de transcripción`}
-        />
-      )}
-      {gq && (
-        <Stat
-          dot={groqOut ? "out" : groqLow ? "low" : "ok"}
-          label="Groq · IA principal"
-          value={`${gq.remainingRequests}/${gq.limitRequests} req`}
-          sub={`reinicia en ${shortReset(gq.resetRequests)}`}
-        />
-      )}
-      {gg && (
-        <Stat
-          dot={gg.configured ? "backup" : "out"}
-          label="Google · IA respaldo"
-          value={gg.configured ? "Gemini 2.5" : "no configurado"}
-          sub={gg.configured ? "listo si Groq falla" : "falta la API key"}
-        />
-      )}
-    </div>
-  );
-}
-
-function Stat({
-  dot,
-  label,
-  value,
-  sub,
-}: {
-  dot: "ok" | "low" | "out" | "backup";
-  label: string;
-  value: string;
-  sub: string;
-}) {
-  const color =
-    dot === "ok"
-      ? "bg-emerald-500"
-      : dot === "low"
-        ? "bg-amber-500"
-        : dot === "out"
-          ? "bg-live"
-          : "bg-faint";
-  return (
-    <div
-      className="flex items-start gap-2 rounded-lg border border-hairline/70 bg-surface/60 px-3 py-2"
-      title={`${label}: ${value} · ${sub}`}
-    >
-      <span className={`mt-1 inline-block h-2 w-2 shrink-0 rounded-full ${color}`} />
-      <div className="min-w-0 leading-tight">
-        <div className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-faint">
-          {label}
-        </div>
-        <div className="mt-0.5 truncate font-mono text-[13px] font-medium tabular-nums text-foreground/85">
-          {value}
-        </div>
-        <div className="truncate font-mono text-[10px] tracking-[0.04em] text-faint">
-          {sub}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function shortReset(s: string): string {
-  if (!s) return "—";
-  return s.replace(/\.\d+/, "").replace(/(\d+)(ms)/, "0s");
-}
-
-function Dot({ delay = "0s" }: { delay?: string }) {
-  return (
-    <span
-      className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-faint"
-      style={{ animationDelay: delay }}
-    />
-  );
-}
-
-function EmptyState() {
-  const steps = [
-    {
-      n: "1",
-      t: "Inicia la sesión",
-      d: "Pulsa Iniciar y concede el micrófono.",
-    },
-    {
-      n: "2",
-      t: "Habla con naturalidad",
-      d: "En español o inglés; se detecta el idioma solo.",
-    },
-    {
-      n: "3",
-      t: "Recibe la interpretación",
-      d: "Cada intervención aparece interpretada al instante.",
-    },
-    {
-      n: "4",
-      t: "Guarda el registro",
-      d: "Copia o descarga la sesión al terminar.",
-    },
-  ];
-  return (
-    <div className="mt-4 flex flex-col gap-6">
-      <div className="clinical-grid rounded-2xl border border-hairline bg-surface/60 px-6 py-10">
-        <span className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-accent">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent" />
-          Intérprete médico en espera
-        </span>
-        <h2 className="mt-4 max-w-lg text-2xl font-semibold leading-tight tracking-tight text-foreground">
-          Interpretación médica en vivo, español&nbsp;⇄&nbsp;inglés.
-        </h2>
-        <p className="mt-3 max-w-md text-[15px] leading-relaxed text-muted">
-          Diseñado para intérpretes médicos, hospitales y clínicas. Terminología
-          clínica precisa, acrónimos expandidos, dosis, cifras y nombres
-          intactos — sin resumir, omitir ni explicar.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {steps.map((s) => (
-          <div
-            key={s.n}
-            className="flex gap-3 rounded-xl border border-hairline bg-surface/40 px-4 py-3"
-          >
-            <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md bg-accent/12 font-mono text-xs font-semibold text-accent">
-              {s.n}
+          {/* La leyenda va debajo, donde ya se ha visto el patrón: puesta
+              arriba sería una instrucción antes de tener qué leer. */}
+          <p className="mt-6 text-center font-mono text-[9px] uppercase tracking-[0.18em] text-faint">
+            <span className="habla-origen text-[11px] normal-case tracking-normal text-muted">
+              {t.portada.leyendaCursiva}
             </span>
-            <div>
-              <p className="text-sm font-medium text-foreground">{s.t}</p>
-              <p className="text-[13px] leading-relaxed text-muted">{s.d}</p>
+            {t.portada.leyendaResto}
+          </p>
+
+          <div className="mx-auto mt-16 max-w-lg text-center sm:mt-20">
+            <p className="text-[15px] leading-relaxed text-muted">
+              {t.portada.lede}
+            </p>
+            <div className="mt-7 flex flex-col items-center gap-3">
+              <Link
+                href={isLoggedIn ? "/app" : "/registro"}
+                className="rounded-md bg-foreground px-6 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              >
+                {isLoggedIn ? t.comun.abrirParla : t.portada.empezarGratis}
+              </Link>
+              <span className="font-mono text-[9.5px] uppercase tracking-[0.16em] text-faint">
+                {libre
+                  ? fmt(t.portada.pruebaSinTarjeta, { n: libre.monthly_minutes })
+                  : t.portada.pruebaSinTarjetaSimple}
+              </span>
             </div>
           </div>
-        ))}
-      </div>
+        </section>
 
-      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
-        Confidencial · OPI / VRI · herramienta de asistencia
-      </p>
-    </div>
+        {/* ═══ Las tres reglas ═══
+            Son los principios del oficio, no pasos de un proceso: nada de
+            numerarlas, porque no hay un orden que el lector deba seguir. */}
+        <section className="mt-20 sm:mt-28">
+          <h2 className="habla text-[26px] font-normal tracking-tight">
+            {t.portada.reglasTitulo}
+          </h2>
+          <dl className="mt-8 grid grid-cols-1 gap-x-10 gap-y-7 sm:grid-cols-3">
+            {[
+              { t: t.portada.regla1, d: t.portada.regla1d },
+              { t: t.portada.regla2, d: t.portada.regla2d },
+              { t: t.portada.regla3, d: t.portada.regla3d },
+            ].map((f) => (
+              <div key={f.t}>
+                <dt className="text-[15px] font-medium">{f.t}</dt>
+                <dd className="mt-1.5 text-sm leading-relaxed text-muted">
+                  {f.d}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        {/* ═══ Precios ═══
+            Pliegos sobre el papel: hojas con sombra, sin borde dibujado. */}
+        <section id="precios" className="mt-20 scroll-mt-8 sm:mt-28">
+          <h2 className="habla text-[26px] font-normal tracking-tight">
+            {t.portada.preciosTitulo}
+          </h2>
+          <p className="mt-2 text-sm text-muted">
+            {t.portada.preciosPie}
+          </p>
+
+          <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {(plans ?? []).map((plan: Plan) => (
+              <div
+                key={plan.id}
+                className={`flex flex-col rounded-lg bg-surface px-6 py-6 shadow-pliego ${
+                  plan.id === "pro" ? "ring-1 ring-accent/25" : ""
+                }`}
+              >
+                <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-faint">
+                  {plan.name}
+                </p>
+                <p className="habla mt-3 text-[2rem] font-normal leading-none tracking-tight tabular-nums">
+                  {money(plan.price_cents, t.portada.gratis)}
+                  {plan.price_cents > 0 && (
+                    <span className="font-sans text-sm text-muted">
+                      {" "}
+                      {t.cuenta.porMes}
+                    </span>
+                  )}
+                </p>
+                <p className="mt-2.5 font-mono text-[11px] tabular-nums text-muted">
+                  {cuota(plan.monthly_minutes)}
+                </p>
+                <p className="mt-4 flex-1 text-sm leading-relaxed text-muted">
+                  {PITCH[plan.id] ?? ""}
+                </p>
+                <Link
+                  href={isLoggedIn ? "/cuenta" : "/registro"}
+                  className={`mt-6 rounded-md py-2.5 text-center text-sm font-medium transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
+                    plan.id === "pro"
+                      ? "bg-foreground text-background"
+                      : "bg-foreground/[0.06] text-foreground"
+                  }`}
+                >
+                  {plan.price_cents === 0
+                    ? t.portada.empezarGratis
+                    : t.portada.elegirPlan}
+                </Link>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ═══ Guía ═══ */}
+        <section className="mt-20 sm:mt-28">
+          <div className="rounded-lg bg-surface px-6 py-7 shadow-pliego sm:px-8">
+            <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-faint">
+              {t.portada.docEtiqueta}
+            </p>
+            <h2 className="habla mt-2 text-[24px] font-normal tracking-tight">
+              {t.portada.docTitulo}
+            </h2>
+            <p className="mt-2.5 max-w-lg text-sm leading-relaxed text-muted">
+              {t.portada.docPie}
+            </p>
+            <Link
+              href="/guia"
+              className="mt-5 inline-block rounded-md border border-hairline px-4 py-2 text-sm font-medium transition-colors hover:bg-foreground/[0.04]"
+            >
+              {t.portada.docEnlace}
+            </Link>
+          </div>
+        </section>
+
+        {/* ═══ Preguntas ═══ */}
+        <section className="mt-20 sm:mt-28">
+          <h2 className="habla text-[26px] font-normal tracking-tight">
+            {t.portada.preguntasTitulo}
+          </h2>
+          <dl className="mt-8 grid grid-cols-1 gap-x-12 gap-y-8 sm:grid-cols-2">
+            {[
+              { q: t.portada.p1, a: t.portada.r1 },
+              { q: t.portada.p2, a: t.portada.r2 },
+              { q: t.portada.p3, a: t.portada.r3 },
+              { q: t.portada.p4, a: t.portada.r4 },
+            ].map((f) => (
+              <div key={f.q}>
+                <dt className="text-[15px] font-medium">{f.q}</dt>
+                <dd className="mt-1.5 text-sm leading-relaxed text-muted">
+                  {f.a}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        <footer className="mt-20 flex flex-wrap items-end justify-between gap-5 py-10 sm:mt-28">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-faint">
+              {t.portada.pieMarca}
+            </p>
+            <Link
+              href="/guia"
+              className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-muted transition-colors hover:text-foreground"
+            >
+              {t.portada.pieGuia}
+            </Link>
+          </div>
+          <p className="max-w-sm text-[11px] leading-relaxed text-faint">
+            {t.comun.aviso}
+          </p>
+        </footer>
+      </main>
+    </>
   );
 }

@@ -1,0 +1,217 @@
+[
+  {
+    "id": "acr-01",
+    "lang": "en",
+    "text": "He has HTN and CHF, and his BP today is 160 over 95.",
+    "expect": {
+      "contains": ["HTN", "160", "95"],
+      "containsAny": [["hipertensión"], ["insuficiencia cardíaca", "ICC"]],
+      "lang": "es"
+    }
+  },
+  {
+    "id": "acr-02",
+    "lang": "es",
+    "text": "Tiene EPOC y le hicieron una tomografía de tórax.",
+    "expect": { "containsAny": [["COPD", "EPOC"]], "lang": "en" }
+  },
+  {
+    "id": "acr-03",
+    "lang": "en",
+    "text": "The patient is NPO after midnight and needs a CBC and a CMP before surgery.",
+    "expect": { "contains": ["NPO", "CBC", "CMP"], "lang": "es" }
+  },
+  {
+    "id": "dose-01",
+    "lang": "en",
+    "text": "Take Metformin 500 mg twice daily with meals.",
+    "expect": { "contains": ["500", "mg"], "containsAny": [["Metformina", "Metformin"]], "lang": "es" }
+  },
+  {
+    "id": "dose-02",
+    "lang": "es",
+    "text": "Le recetaron Lisinopril de 10 miligramos una vez al día.",
+    "expect": { "contains": ["Lisinopril", "10"], "lang": "en" }
+  },
+  {
+    "id": "dose-03",
+    "lang": "en",
+    "text": "We'll give you 0.5 milligrams of Ativan IV push right now.",
+    "expect": { "contains": ["0.5", "Ativan"], "lang": "es" }
+  },
+  {
+    "id": "num-01",
+    "lang": "es",
+    "text": "Mi cita es el 14 de marzo a las 3 y media de la tarde.",
+    "expect": { "contains": ["14"], "lang": "en" }
+  },
+  {
+    "id": "num-02",
+    "lang": "en",
+    "text": "Your copay is forty-five dollars and the deductible is two thousand.",
+    "expect": { "lang": "es" }
+  },
+  {
+    "id": "person-01",
+    "lang": "en",
+    "text": "I have chest pain and I can't breathe well.",
+    "expect": {
+      "lang": "es",
+      "containsAny": [["Tengo", "tengo"]],
+      "notContains": ["El paciente", "The patient"]
+    }
+  },
+  {
+    "id": "person-02",
+    "lang": "en",
+    "text": "Dr. Ramirez will call Aetna tomorrow morning.",
+    "expect": {
+      "lang": "es",
+      "contains": ["Ramirez", "Aetna"],
+      "notContains": ["Yo, el Dr", "Yo, Dr"]
+    }
+  },
+  {
+    "id": "person-03",
+    "lang": "es",
+    "text": "Mi esposa dice que ella no ha tomado la medicina desde el lunes.",
+    "expect": { "lang": "en", "notContains": ["I have not taken"] }
+  },
+  {
+    "id": "noanswer-01",
+    "lang": "en",
+    "text": "What is the capital of France?",
+    "expect": {
+      "lang": "es",
+      "containsAny": [["capital"]],
+      "notContains": ["París", "Paris"]
+    }
+  },
+  {
+    "id": "noanswer-02",
+    "lang": "es",
+    "text": "¿Qué me recomienda usted que haga, doctor?",
+    "note": "Sin check de idioma: franc clasifica mal 'What do you recommend I do, doctor?'. La ausencia de '¿' basta como señal.",
+    "expect": {
+      "containsAny": [["recommend", "advise", "suggest"]],
+      "notContains": ["¿"]
+    }
+  },
+  {
+    "id": "noanswer-03",
+    "lang": "en",
+    "text": "Interpreter, can you tell her I said hello?",
+    "expect": { "lang": "es", "notContains": ["Hola de parte"] }
+  },
+  {
+    "id": "ctx-01",
+    "lang": "es",
+    "text": "Tres.",
+    "context": [
+      { "source": "How many pregnancies have you had?", "target": "¿Cuántos embarazos ha tenido?", "sourceLang": "en" }
+    ],
+    "expect": { "lang": "en", "containsAny": [["Three", "three"]] }
+  },
+  {
+    "id": "ctx-02",
+    "lang": "en",
+    "text": "No, I stopped it last week.",
+    "context": [
+      { "source": "¿Sigue tomando la metformina?", "target": "Are you still taking the metformin?", "sourceLang": "es" }
+    ],
+    "expect": { "lang": "es", "containsAny": [["la dejé", "dejé de tomarla", "la suspendí"]] }
+  },
+  {
+    "id": "ctx-03",
+    "lang": "es",
+    "text": "Sí, desde ayer.",
+    "context": [
+      { "source": "Has she had a fever?", "target": "¿Ha tenido fiebre?", "sourceLang": "en" }
+    ],
+    "expect": { "lang": "en", "containsAny": [["yesterday"]] }
+  },
+  {
+    "id": "ctx-04",
+    "lang": "en",
+    "text": "Twice a day.",
+    "context": [
+      { "source": "¿Cada cuánto se aplica la insulina?", "target": "How often do you use the insulin?", "sourceLang": "es" }
+    ],
+    "expect": { "lang": "es", "containsAny": [["dos veces al día", "Dos veces al día"]] }
+  },
+  {
+    "id": "reg-01",
+    "lang": "en",
+    "text": "I'm feeling lightheaded and my heart is racing.",
+    "expect": { "lang": "es", "notContains": ["cabeza ligera"] }
+  },
+  {
+    "id": "reg-02",
+    "lang": "en",
+    "text": "Have you had any shortness of breath on exertion?",
+    "expect": { "lang": "es", "containsAny": [["falta de aire", "dificultad para respirar", "SOB"]] }
+  },
+  {
+    "id": "tone-01",
+    "lang": "es",
+    "text": "¡Ya no aguanto más este dolor, por favor ayúdenme!",
+    "expect": { "lang": "en", "notContains": ["The patient"] }
+  },
+  {
+    "id": "tone-02",
+    "lang": "en",
+    "text": "This is ridiculous, I've been waiting for three hours.",
+    "expect": { "lang": "es", "contains": ["tres"] }
+  },
+  {
+    "id": "name-01",
+    "lang": "en",
+    "text": "Your follow-up is at Mount Sinai with Dr. Whitaker.",
+    "expect": { "lang": "es", "contains": ["Mount Sinai", "Whitaker"] }
+  },
+  {
+    "id": "name-02",
+    "lang": "es",
+    "text": "Los resultados los mandaron a LabCorp el viernes.",
+    "expect": { "lang": "en", "contains": ["LabCorp"] }
+  },
+  {
+    "id": "obgyn-01",
+    "lang": "en",
+    "text": "When was your LMP, and what is your EDD?",
+    "expect": { "lang": "es", "contains": ["LMP", "EDD"] }
+  },
+  {
+    "id": "peds-01",
+    "lang": "es",
+    "text": "El niño pesa 14 kilos y mide 95 centímetros.",
+    "expect": { "lang": "en", "contains": ["14", "95"] }
+  },
+  {
+    "id": "psy-01",
+    "lang": "en",
+    "text": "Have you had any thoughts of hurting yourself in the past two weeks?",
+    "expect": { "lang": "es", "containsAny": [["hacerse daño", "lastimarse", "hacerse dano"]] }
+  },
+  {
+    "id": "consent-01",
+    "lang": "en",
+    "text": "By signing this form, you consent to the procedure and its risks.",
+    "expect": { "lang": "es", "containsAny": [["consiente", "consentimiento", "autoriza"]] }
+  },
+  {
+    "id": "greet-01",
+    "lang": "es",
+    "text": "Buenos días, mucho gusto.",
+    "expect": { "lang": "en", "containsAny": [["Good morning"]] }
+  },
+  {
+    "id": "short-01",
+    "lang": "en",
+    "text": "Okay.",
+    "context": [
+      { "source": "Voy a necesitar que se quite la camisa.", "target": "I'm going to need you to take off your shirt.", "sourceLang": "es" }
+    ],
+    "expect": { "lang": "es" }
+  }
+]

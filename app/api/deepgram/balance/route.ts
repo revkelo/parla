@@ -1,9 +1,25 @@
 import { NextResponse } from "next/server";
+import { esAdmin } from "@/app/lib/admin";
 
 export const dynamic = "force-dynamic";
 
-// Consulta el saldo restante de Deepgram (suma de balances del primer proyecto).
+/**
+ * Saldo restante de la cuenta de Deepgram (suma de balances del primer
+ * proyecto). **Solo administradores.**
+ *
+ * Esta ruta estaba abierta a internet: sin sesión siquiera, cualquiera podía
+ * consultar cuánto crédito le queda a la plataforma y, de paso, hacer que el
+ * servidor llamara dos veces a la API de Deepgram por petición. El saldo es
+ * información de costos del negocio, igual que el margen del panel, así que va
+ * detrás del mismo rol.
+ */
 export async function GET() {
+  if (!(await esAdmin())) {
+    // 404 y no 403, igual que /admin: quien no tiene permiso no necesita
+    // enterarse de que esta ruta existe.
+    return NextResponse.json({ error: "No encontrado." }, { status: 404 });
+  }
+
   const apiKey = process.env.DEEPGRAM_API_KEY;
   if (!apiKey) {
     return NextResponse.json(

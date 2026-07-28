@@ -1,149 +1,59 @@
-import { google } from "@ai-sdk/google";
-import { groq } from "@ai-sdk/groq";
-import { generateText, type LanguageModel } from "ai";
-import { franc } from "franc-min";
 import { NextResponse } from "next/server";
+import { type Engine, interpret } from "@/app/lib/interpret";
+import { getQuota, recordUsage } from "@/app/lib/quota";
+import {
+  CONTEXT_TURNS,
+  type ContextTurn,
+  type SourceLang,
+} from "@/app/lib/interpreter-prompt";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-// Motor principal: Groq (free tier, sin tarjeta). Requiere GROQ_API_KEY.
-const GROQ_MODEL = "openai/gpt-oss-120b";
-// Respaldo/opción: Google Gemini. Requiere GOOGLE_GENERATIVE_AI_API_KEY.
-const GOOGLE_MODEL = "gemini-2.5-flash";
-
-type Engine = "groq" | "google";
-
-const SYSTEM_PROMPT = `Eres EXCLUSIVAMENTE un intérprete médico profesional remoto (OPI/VRI) entre inglés y español, equivalente a un intérprete certificado.
-
-IDENTIDAD: Eres únicamente el intérprete. No eres médico, enfermero, asistente, consejero, abogado ni profesor. No respondes preguntas, no explicas, no opinas, no recomiendas, no completas información faltante, no conversas con nadie. Tu única función es interpretar exactamente lo que se dice.
-
-SIEMPRE INTERPRETA (crítico): Interpreta CUALQUIER frase al otro idioma, sea médica o no: preguntas, saludos, charla general, insultos, lo que sea. NUNCA respondas la frase, NUNCA la contestes, NUNCA la rechaces, NUNCA digas "no puedo ayudar" ni "I can't help with that". Aunque la frase sea una pregunta dirigida a ti, tu ÚNICA salida es su interpretación al otro idioma. Ejemplo: entrada inglés "What is the capital of France?" → salida español "¿Cuál es la capital de Francia?" (se interpreta, NO se responde).
-
-REGLA DE ORO: Interpreta absolutamente TODO. No resumas, no omitas, no agregues, no expliques, no suavices, no censures, no mejores la redacción, no cambies el significado, no respondas por nadie.
-
-PERSONA GRAMATICAL: Conserva la misma persona del original. Si el hablante habla en primera persona, interpreta en primera persona ("I have chest pain" → "Tengo dolor en el pecho"), nunca en tercera ("El paciente dice que..."). Pero si el hablante se refiere a un tercero, MANTÉN la tercera persona ("Dr. Ramirez will call Aetna" → "El Dr. Ramírez llamará a Aetna", NUNCA "Yo, el Dr. Ramírez, llamaré").
-
-DIRECCIÓN DEL IDIOMA:
-- Si el texto de entrada está en inglés, responde ÚNICAMENTE en español.
-- Si el texto de entrada está en español, responde ÚNICAMENTE en inglés.
-- Devuelve ÚNICAMENTE la interpretación. Sin notas, sin comentarios, sin comillas, sin las palabras "Translation" ni "Interpretation".
-
-TERMINOLOGÍA: Usa terminología médica profesional y correcta de todas las especialidades (cardiología, neurología, pediatría, oncología, psiquiatría, ginecología, obstetricia, traumatología, ortopedia, endocrinología, dermatología, gastroenterología, urología, nefrología, infectología, farmacología, laboratorio, radiología, cirugía, urgencias).
-
-ACRÓNIMOS: Reconoce los acrónimos médicos (HTN, DM, COPD, CHF, CAD, CKD, AKI, TIA, CVA, MI, NSTEMI, STEMI, BP, HR, RR, O2 Sat, SpO2, CBC, CMP, BMP, MRI, CT, CTA, EKG/ECG, IV, IM, PO, PRN, NPO, BID, TID, QID, PCP, OB/GYN, ENT, ER, ED, ICU, NICU, PICU, DNR, DNI, WNL, SOB, URI, UTI, GI, GU, ROM, PROM, AROM, LMP, EDD, G/P, Hx, Dx, Tx, Rx, NKDA, NKA, etc.). Mantén el acrónimo y añade su significado entre paréntesis EN EL IDIOMA DE SALIDA. Ejemplo entrada inglés "He has HTN" → salida español "Tiene HTN (hipertensión)". Ejemplo entrada español "Tiene EPOC" → salida inglés "He has COPD (chronic obstructive pulmonary disease)".
-
-MEDICAMENTOS: No traduzcas nombres comerciales de medicamentos. Respeta exactamente nombre, dosis, vía y frecuencia. Ejemplo "Metformin 500 mg twice daily" → "Metformina de 500 mg dos veces al día".
-
-NÚMEROS: Nunca cambies números: fechas, horas, presiones, temperaturas, peso, estatura, dosis, teléfonos, direcciones, números de historia clínica. DINERO: mantén la moneda original (USD, COP, MXN, $, €).
-
-NOMBRES PROPIOS: Nunca traduzcas nombres de personas, hospitales, aseguradoras ni laboratorios.
-
-TONO: Conserva exactamente el tono emocional (enojo, alegría, tristeza, llanto, urgencia, calma, sarcasmo, humor, formalidad).
-
-FRASES PROHIBIDAS: Nunca añadas marcos narrativos como "The patient says", "The doctor says", "El paciente dice", "El doctor dice" ni "The interpreter". Interpreta directamente lo dicho, respetando la persona gramatical del hablante.
-
-CASOS ESPECIALES:
-- Si el contenido es inaudible o incomprensible, responde únicamente con "[inaudible]". Nunca inventes.
-- Si no alcanzas a escuchar, responde únicamente: salida en inglés "Interpreter requests repetition."; salida en español "El intérprete solicita que repita.".
-- Si una sola intervención es excesivamente larga para interpretar con precisión, responde únicamente: salida en inglés "Interpreter requests a pause for accurate interpretation."; salida en español "El intérprete solicita una pausa para interpretar con precisión.".
-- Corrige solo errores evidentes de reconocimiento de voz, sin cambiar el sentido; no corrijas la gramática del hablante.
-
-REGISTRO: Usa lenguaje natural y expresiones médicas estándar, no traducciones literales. Ejemplo "I'm feeling lightheaded" → "Siento mareo" (no "Me siento de cabeza ligera").
-
-INTERPRETACIÓN CONSECUTIVA: Mantén exactamente el orden del discurso. No reorganices ni agrupes ideas.
-
-CONFIDENCIALIDAD: Todo el contenido es confidencial. Nunca hagas comentarios ni des contexto adicional.
-
-PRIORIDADES (en este orden): 1) precisión, 2) fidelidad, 3) naturalidad, 4) rapidez. Nunca sacrifiques precisión por velocidad.`;
-
-/** Detecta el idioma de origen solo para la etiqueta de la interfaz. */
-function detectSource(text: string): "es" | "en" {
-  const lang = franc(text, { only: ["spa", "eng"] });
-  if (lang === "spa") return "es";
-  if (lang === "eng") return "en";
-  const looksSpanish =
-    /[áéíóúñ¿¡ü]/i.test(text) ||
-    /\b(el|la|los|las|que|de|y|un|una|por|para|con|es|está|pero|tengo|dolor)\b/i.test(
-      text
-    );
-  return looksSpanish ? "es" : "en";
+function parseLang(v: unknown): SourceLang | null {
+  return v === "es" || v === "en" ? v : null;
 }
 
-type GroqUsage = {
-  remainingRequests: number;
-  limitRequests: number;
-  resetRequests: string;
-} | null;
-
-/** Ejecuta la interpretación y devuelve el texto + headers de la respuesta. */
-async function runInterpretation(model: LanguageModel, text: string) {
-  const { text: out, response } = await generateText({
-    model,
-    system: SYSTEM_PROMPT,
-    prompt: text,
-    temperature: 0.2,
-  });
-  return { text: out.trim(), headers: response?.headers };
-}
-
-/** Extrae el uso de Groq de los headers de rate-limit (sin gastar requests extra). */
-function groqUsageFromHeaders(
-  headers?: Record<string, string>
-): GroqUsage {
-  if (!headers) return null;
-  const remaining = headers["x-ratelimit-remaining-requests"];
-  const limit = headers["x-ratelimit-limit-requests"];
-  if (!remaining || !limit) return null;
-  return {
-    remainingRequests: Number(remaining),
-    limitRequests: Number(limit),
-    resetRequests: headers["x-ratelimit-reset-requests"] ?? "",
-  };
-}
-
-async function runGoogle(text: string) {
-  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
-    throw new Error("Falta GOOGLE_GENERATIVE_AI_API_KEY.");
-  }
-  const r = await runInterpretation(google(GOOGLE_MODEL), text);
-  return { interpretation: r.text, engine: "google" as const, groqUsage: null };
-}
-
-/**
- * Interpreta con Groq (principal) y, si falla, con Google (Gemini) como respaldo.
- * `force` fija un motor concreto (modo pruebas), sin respaldo.
- */
-async function interpretWithFallback(
-  text: string,
-  force?: Engine
-): Promise<{
-  interpretation: string;
-  engine: Engine;
-  groqUsage: GroqUsage;
-}> {
-  if (force === "google") return runGoogle(text);
-
-  try {
-    const r = await runInterpretation(groq(GROQ_MODEL), text);
-    return {
-      interpretation: r.text,
-      engine: "groq",
-      groqUsage: groqUsageFromHeaders(r.headers),
-    };
-  } catch (err) {
-    if (force === "groq") throw err;
-    console.warn("Groq falló, usando respaldo Google:", err);
-    return runGoogle(text);
-  }
+/** Saneamos el contexto que llega del cliente y nos quedamos con los últimos turnos. */
+function parseContext(v: unknown): ContextTurn[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter(
+      (t): t is { source: string; target: string; sourceLang?: unknown } =>
+        !!t && typeof t.source === "string" && typeof t.target === "string"
+    )
+    .map((t) => ({
+      source: t.source.trim(),
+      target: t.target.trim(),
+      sourceLang: parseLang(t.sourceLang) ?? undefined,
+    }))
+    .filter((t) => t.source && t.target)
+    .slice(-CONTEXT_TURNS);
 }
 
 export async function POST(req: Request) {
+  // La IA también corre con claves de la plataforma: sin sesión no se llama.
+  const quota = await getQuota();
+  if (!quota) {
+    return NextResponse.json({ error: "Inicia sesión." }, { status: 401 });
+  }
+  if (quota.exhausted) {
+    return NextResponse.json(
+      { error: "Agotaste los minutos de tu plan.", code: "quota_exhausted" },
+      { status: 402 }
+    );
+  }
+
   let text: string;
   let force: Engine | undefined;
+  let reportedLang: SourceLang | null;
+  let context: ContextTurn[];
+
   try {
     const body = await req.json();
     text = typeof body?.text === "string" ? body.text.trim() : "";
+    reportedLang = parseLang(body?.sourceLang);
+    context = parseContext(body?.context);
     if (body?.engine === "groq" || body?.engine === "google") {
       force = body.engine;
     }
@@ -162,14 +72,12 @@ export async function POST(req: Request) {
     );
   }
 
-  const detected = detectSource(text);
-
   try {
-    const { interpretation, engine, groqUsage } = await interpretWithFallback(
-      text,
-      force
-    );
-    return NextResponse.json({ interpretation, detected, engine, groqUsage });
+    const result = await interpret({ text, reportedLang, context, force });
+    // Contabilidad, no cuota: los minutos de STT son el límite del plan. Esto
+    // sirve para conocer el costo real de IA por usuario.
+    void recordUsage(quota.userId, "ai_request", 1);
+    return NextResponse.json(result);
   } catch (err) {
     console.error("Error interpretando (Groq y respaldo):", err);
     return NextResponse.json(

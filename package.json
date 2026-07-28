@@ -6,26 +6,46 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "eval": "tsx --env-file=.env.local eval/run.ts",
+    "migrate": "tsx --env-file=.env.local scripts/migrate.ts",
+    "stripe:setup": "tsx --env-file=.env.local scripts/stripe-setup.ts",
+    "test:stripe": "tsx --env-file=.env.local tests/stripe.test.mts",
+    "medir:costo": "tsx --env-file=.env.local scripts/medir-costo.ts",
+    "viabilidad": "tsx scripts/viabilidad.ts",
+    "supabase:auth": "tsx --env-file=.env.local scripts/supabase-auth.ts",
+    "sembrar": "tsx --env-file=.env.local scripts/sembrar.ts",
+    "test:admin": "tsx --env-file=.env.local tests/admin.test.mts",
+    "test:hook": "tsx --env-file=.env.local tests/email-hook.test.mts",
+    "test:historial": "tsx --env-file=.env.local tests/historial.test.mts",
+    "test:validacion": "tsx tests/validacion.test.mts",
+    "test": "npm run test:validacion && npm run test:seguridad && npm run test:admin && npm run test:historial",
+    "test:seguridad": "tsx --env-file=.env.local tests/seguridad.test.mts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.24",
     "@ai-sdk/groq": "^4.0.13",
     "@deepgram/sdk": "^5.7.0",
+    "@supabase/ssr": "^0.12.3",
+    "@supabase/supabase-js": "^2.110.9",
     "ai": "^7.0.37",
     "franc-min": "^6.2.0",
     "next": "16.2.11",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "stripe": "^22.3.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
+    "pg": "^8.22.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.1",
     "typescript": "^5"
   }
 }

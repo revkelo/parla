@@ -1,15 +1,45 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════════════════════════════
+   PARLA · edición bilingüe
+
+   La página se lee como una edición enfrentada: el original en una plana, la
+   interpretación en la otra, y un lomo vertical entre las dos. De ahí salen
+   las tres decisiones del sistema.
+
+   COLOR — papel de copia clínica. El fondo es el gris verdoso de los
+   formularios calcados de hospital, no un blanco de interfaz; encima van
+   pliegos casi blancos, así que las tarjetas se leen como hojas sobre una
+   mesa y no como cajas dibujadas con borde. La tinta es azul-negra de pluma,
+   nunca negro puro.
+
+   TIPOGRAFÍA — tres voces, cada una con su trabajo:
+     · Newsreader  el habla. Romana la interpretación, CURSIVA el original,
+                   que es como distinguen las ediciones bilingües de verdad.
+     · Plex Sans   la interfaz: rótulos, botones, navegación.
+     · Plex Mono   los datos: tiempos, minutos, cuotas.
+
+   ESTRUCTURA — una sola línea, y es vertical: el lomo.
+   ═══════════════════════════════════════════════════════════════════════ */
+
 :root {
-  --background: #f7f8f8;
-  --surface: #ffffff;
-  --foreground: #16181d;
-  --muted: #646a73;
-  --faint: #9aa0a8;
-  --hairline: rgba(20, 22, 28, 0.08);
-  --accent: #0d7d74;
-  --accent-soft: rgba(13, 125, 116, 0.1);
-  --live: #dc2626;
+  --background: #e7ecea;
+  --surface: #fbfdfc;
+  --foreground: #14222a;
+  --muted: #4f636d;
+  --faint: #8598a0;
+  --hairline: rgba(20, 34, 42, 0.11);
+  /* El lomo va más marcado que un filete cualquiera: es la estructura de la
+     página, no una separación. Con la opacidad de --hairline se leía como un
+     defecto de render en vez de como una decisión. */
+  --lomo: rgba(20, 34, 42, 0.22);
+  --accent: #0b6b60;
+  --accent-soft: rgba(11, 107, 96, 0.09);
+  --live: #b8402f;
+
+  /* Sombra de pliego: muy baja y muy difusa, para que la hoja se despegue del
+     papel sin que parezca un botón flotando. */
+  --pliego: 0 1px 2px rgba(20, 34, 42, 0.05), 0 8px 24px -12px rgba(20, 34, 42, 0.16);
 }
 
 @theme inline {
@@ -22,21 +52,26 @@
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
   --color-live: var(--live);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-plex-sans);
+  --font-mono: var(--font-plex-mono);
+  --font-speech: var(--font-newsreader);
+  --shadow-pliego: var(--pliego);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0b0c0e;
-    --surface: #131519;
-    --foreground: #e9eaec;
-    --muted: #8b9099;
-    --faint: #5c626b;
-    --hairline: rgba(255, 255, 255, 0.1);
-    --accent: #2dd4bf;
-    --accent-soft: rgba(45, 212, 191, 0.12);
-    --live: #f04747;
+    /* El turno de noche: la misma tinta azul-verdosa, invertida. */
+    --background: #0d1519;
+    --surface: #152025;
+    --foreground: #e4ebe9;
+    --muted: #93a7ae;
+    --faint: #64787f;
+    --hairline: rgba(228, 235, 233, 0.12);
+    --lomo: rgba(228, 235, 233, 0.2);
+    --accent: #4ec9b6;
+    --accent-soft: rgba(78, 201, 182, 0.13);
+    --live: #e8705c;
+    --pliego: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
   }
 }
 
@@ -47,14 +82,86 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Rejilla clínica muy sutil de fondo */
-.clinical-grid {
-  background-image: linear-gradient(
-    to bottom,
-    var(--hairline) 1px,
-    transparent 1px
-  );
-  background-size: 100% 2rem;
+/* ─────────────────────────── El habla ───────────────────────────
+   Todo lo que alguien dijo va en Newsreader. La interpretación en romana; el
+   original, en cursiva. Es la convención de las ediciones bilingües y aquí
+   además es funcional: se distingue quién habla de qué se interpretó sin
+   depender del color. */
+
+.habla {
+  font-family: var(--font-speech), Georgia, serif;
+  font-optical-sizing: auto;
+  letter-spacing: -0.006em;
+}
+
+.habla-origen {
+  font-family: var(--font-speech), Georgia, serif;
+  font-style: italic;
+  font-optical-sizing: auto;
+}
+
+/* ─────────────────────────── El lomo ───────────────────────────
+   La línea vertical que separa las dos planas. Se dibuja con un pseudo-
+   elemento sobre el contenedor de la conversación para que sea continua a lo
+   largo de todos los turnos, en vez de un borde por turno que se rompería en
+   cada hueco. Se desvanece arriba y abajo: una línea que empieza y acaba en
+   seco parece un error de maquetación. */
+
+.lomo {
+  position: relative;
+}
+
+@media (min-width: 768px) {
+  .lomo::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    transform: translateX(-0.5px);
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      var(--lomo) 6%,
+      var(--lomo) 94%,
+      transparent
+    );
+    pointer-events: none;
+  }
+}
+
+/* Un bloque a todo el ancho que interrumpe el lomo a propósito: como el lomo
+   se pinta en un ::before posicionado, taparlo exige que el bloque también
+   esté posicionado, o el pseudo-elemento le pasaría por encima. */
+.sobre-lomo {
+  position: relative;
+}
+
+/* ─────────────────────────── El desfase ───────────────────────────
+   La firma de la página. Al cargar, el original ya está y la interpretación
+   llega un momento después, igual que en una sesión real: primero se oye,
+   después se rinde. Es la única animación orquestada del sitio.
+
+   El desenfoque al entrar imita el texto que aún se está resolviendo; sin él,
+   el movimiento parece una transición de interfaz cualquiera. */
+
+@keyframes rendir {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+
+.rendir {
+  animation: rendir 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--desfase, 0.5s);
 }
 
 @keyframes rise {
@@ -79,5 +186,11 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  /* Sin esto, el desfase seguiría retrasando la interpretación medio segundo
+     con la pantalla en blanco: la animación dura nada, pero la espera no. */
+  .rendir {
+    animation-delay: 0s !important;
   }
 }

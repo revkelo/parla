@@ -43,3 +43,12 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# Credenciales de las cuentas de prueba.
+#
+# Este repositorio es público y estos dos archivos contienen la contraseña de
+# cuentas con rol de administrador sobre la base de datos REAL. Publicarlas
+# daría a cualquiera acceso al panel y a los correos de todos los usuarios.
+# Las cuentas siguen existiendo; lo que no sale del equipo son sus claves.
+CREDENCIALES.md
+scripts/sembrar.ts
