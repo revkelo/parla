@@ -122,8 +122,10 @@ export default function Transcriptor({
   const ordinalBase = previa?.turnos.length ?? 0;
   // Turnos ya escritos en el historial, para no reenviarlos en cada render.
   const guardadosRef = useRef<Set<number>>(new Set());
-  const streamEndRef = useRef<HTMLDivElement>(null);
   const [alFinal, setAlFinal] = useState(true);
+  /** Marca los saltos que provocamos nosotros, para no confundirlos con el
+      usuario yéndose a releer. Ver el efecto del auto-scroll. */
+  const autoScrollRef = useRef(false);
   const startTsRef = useRef<number | null>(null);
 
   // Ajustes persistentes.
@@ -241,24 +243,75 @@ export default function Transcriptor({
   }, [segments, interpretations, sessionId, historial.activo, ordinalBase]);
 
   /**
+   * Baja al fondo del DOCUMENTO, no al final del hilo. La barra de control es
+   * `sticky bottom-0`: mientras quede algo por debajo se queda pegada al borde
+   * inferior, así que alinear el final del hilo con ese borde dejaba el último
+   * turno justo detrás de la barra. Solo al llegar al fondo del todo la barra
+   * baja a su sitio y el turno queda a la vista.
+   */
+  const irAlFondo = useCallback((suave: boolean) => {
+    autoScrollRef.current = true;
+    const salto = () =>
+      window.scrollTo({
+        top: document.documentElement.scrollHeight,
+        behavior: suave ? "smooth" : "auto",
+      });
+    salto();
+    // El turno que se acaba de insertar puede no estar medido todavía, y el
+    // primer salto se queda corto. Repetir en el frame siguiente, ya con la
+    // altura definitiva, es lo que garantiza acabar en el último turno.
+    if (!suave) requestAnimationFrame(salto);
+  }, []);
+
+  /**
    * Auto-scroll, pero solo si el usuario ya estaba abajo. Si subió a releer un
    * turno anterior —algo normal en mitad de una consulta— arrastrarlo al final
    * cada vez que llega texto nuevo le hace perder el sitio.
    */
   useEffect(() => {
-    const cerca = () =>
-      window.innerHeight + window.scrollY >=
-      document.body.offsetHeight - PEGADO_ABAJO_PX;
+    const cerca = () => {
+      const doc = document.documentElement;
+      return (
+        doc.scrollHeight - (window.scrollY + doc.clientHeight) <=
+        PEGADO_ABAJO_PX
+      );
+    };
 
-    const onScroll = () => setAlFinal(cerca());
+    const onScroll = () => {
+      // Un salto nuestro no significa que el usuario se haya ido: a mitad de
+      // camino la posición todavía está lejos del final, y darla por buena
+      // apagaba el seguimiento durante el propio salto. Entonces ya no volvía
+      // a activarse solo y el hilo se quedaba clavado.
+      if (autoScrollRef.current) {
+        if (cerca()) autoScrollRef.current = false;
+        return;
+      }
+      setAlFinal(cerca());
+    };
+
+    // Rueda y arrastre sí son el usuario tomando el control, aunque coincidan
+    // con un salto nuestro: cortan el seguimiento en el acto.
+    const onGesto = () => {
+      autoScrollRef.current = false;
+    };
+
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    window.addEventListener("wheel", onGesto, { passive: true });
+    window.addEventListener("touchmove", onGesto, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("wheel", onGesto);
+      window.removeEventListener("touchmove", onGesto);
+    };
   }, []);
 
+  // Sin animación mientras se sigue el hilo: el texto provisional cambia varias
+  // veces por segundo y cada cambio cancelaba la animación anterior para lanzar
+  // otra, así que el hilo avanzaba a tirones y nunca terminaba de llegar abajo.
   useEffect(() => {
     if (!siguiendo) return;
-    streamEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [segments, interim, siguiendo]);
+    irAlFondo(false);
+  }, [segments, interim, siguiendo, irAlFondo]);
 
   // Al cargar y cada vez que termina una sesión, que es cuando cambian los
   // minutos consumidos. `router.refresh()` rehace la barra lateral: la consulta
@@ -505,7 +558,6 @@ export default function Transcriptor({
                 </p>
               </li>
             )}
-            <div ref={streamEndRef} />
           </ol>
         )}
       </div>
@@ -522,7 +574,9 @@ export default function Transcriptor({
             <button
               onClick={() => {
                 setAlFinal(true);
-                streamEndRef.current?.scrollIntoView({ behavior: "smooth" });
+                // Aquí sí con animación: es un salto puntual y pedido, y ver el
+                // recorrido ayuda a no perder el sitio.
+                irAlFondo(true);
               }}
               className="mb-2 flex w-full items-center justify-center gap-2 rounded-lg border border-accent/40 bg-accent-soft py-2 text-sm font-medium text-accent transition-opacity hover:opacity-80"
             >
