@@ -12,7 +12,7 @@
 import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
 
-const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3200";
+const BASE = process.env.TEST_BASE_URL ?? "http://localhost:3000";
 const URL_SB = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 

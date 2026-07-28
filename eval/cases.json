@@ -3,9 +3,11 @@
     "id": "acr-01",
     "lang": "en",
     "text": "He has HTN and CHF, and his BP today is 160 over 95.",
+    "note": "Acrónimos caso 3: ni HTN/CHF ni HTA/ICC le dicen nada al paciente; va el término completo.",
     "expect": {
-      "contains": ["HTN", "160", "95"],
-      "containsAny": [["hipertensión"], ["insuficiencia cardíaca", "ICC"]],
+      "contains": ["160", "95", "insuficiencia cardíaca congestiva"],
+      "containsAny": [["hipertensión", "presión alta"]],
+      "notContains": ["HTN", "CHF", "HTA", "ICC"],
       "lang": "es"
     }
   },
@@ -13,13 +15,19 @@
     "id": "acr-02",
     "lang": "es",
     "text": "Tiene EPOC y le hicieron una tomografía de tórax.",
-    "expect": { "containsAny": [["COPD", "EPOC"]], "lang": "en" }
+    "note": "Acrónimos caso 1: el médico anglófono no entiende EPOC.",
+    "expect": { "contains": ["COPD"], "notContains": ["EPOC"], "lang": "en" }
   },
   {
     "id": "acr-03",
     "lang": "en",
     "text": "The patient is NPO after midnight and needs a CBC and a CMP before surgery.",
-    "expect": { "contains": ["NPO", "CBC", "CMP"], "lang": "es" }
+    "note": "Acrónimos caso 2: sin sigla española establecida, se conservan las letras y se explican.",
+    "expect": {
+      "contains": ["NPO", "CBC", "CMP"],
+      "containsAny": [["nada por vía oral", "en ayunas", "nada por boca"]],
+      "lang": "es"
+    }
   },
   {
     "id": "dose-01",
@@ -176,10 +184,25 @@
     "expect": { "lang": "en", "contains": ["LabCorp"] }
   },
   {
+    "id": "name-03",
+    "lang": "es",
+    "text": "La paciente se llama María Núñez y su doctora es la Dra. Ibáñez.",
+    "note": "Las tildes del nombre no se pierden al pasar al inglés: así está en el expediente.",
+    "expect": {
+      "lang": "en",
+      "contains": ["María Núñez", "Ibáñez"],
+      "notContains": ["Nunez", "Ibanez"]
+    }
+  },
+  {
     "id": "obgyn-01",
     "lang": "en",
     "text": "When was your LMP, and what is your EDD?",
-    "expect": { "lang": "es", "contains": ["LMP", "EDD"] }
+    "expect": {
+      "lang": "es",
+      "contains": ["LMP", "EDD"],
+      "containsAny": [["última regla", "última menstruación", "último período", "último periodo"]]
+    }
   },
   {
     "id": "peds-01",

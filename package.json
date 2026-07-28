@@ -19,8 +19,9 @@
     "test:hook": "tsx --env-file=.env.local tests/email-hook.test.mts",
     "test:historial": "tsx --env-file=.env.local tests/historial.test.mts",
     "test:validacion": "tsx tests/validacion.test.mts",
-    "test": "npm run test:validacion && npm run test:seguridad && npm run test:admin && npm run test:historial",
-    "test:seguridad": "tsx --env-file=.env.local tests/seguridad.test.mts"
+    "test": "npm run test:validacion && npm run test:acronimos && npm run test:seguridad && npm run test:admin && npm run test:historial",
+    "test:seguridad": "tsx --env-file=.env.local tests/seguridad.test.mts",
+    "test:acronimos": "tsx --env-file=.env.local tests/acronimos.test.mts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.24",

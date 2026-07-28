@@ -5,6 +5,11 @@
  *   npm run eval -- --engine=google
  *   npm run eval -- --no-context    # mide cuánto aporta el contexto
  *   npm run eval -- --case=ctx-02   # un solo caso, para depurar
+ *   npm run eval -- --delay=3500    # espera entre casos
+ *
+ * El free tier de Gemini son 20 peticiones por minuto: sin `--delay` la mitad
+ * de los casos fallan por cuota y el resultado no dice nada de la calidad. Con
+ * `--engine=google` se espacian solos.
  *
  * Las comprobaciones son deliberadamente mecánicas (invariantes que NUNCA
  * deben romperse: números, dosis, nombres propios, dirección del idioma,
@@ -50,6 +55,10 @@ const engine =
   engineArg === "groq" || engineArg === "google"
     ? (engineArg as Engine)
     : undefined;
+// Gemini free tier: 20 rpm. 3.5 s entre casos deja margen de sobra.
+const delayArg = Number(args.find((a) => a.startsWith("--delay="))?.split("=")[1]);
+const delay = Number.isFinite(delayArg) ? delayArg : engine === "google" ? 3500 : 0;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function check(out: string, e: Expect): string[] {
   const fails: string[] = [];
@@ -90,7 +99,10 @@ async function main() {
   let passed = 0;
   const failures: string[] = [];
 
+  let first = true;
   for (const c of selected) {
+    if (!first && delay > 0) await sleep(delay);
+    first = false;
     let out = "";
     let fails: string[];
     try {
