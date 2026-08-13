@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { SelectorIdioma } from "@/app/components/SelectorIdioma";
 import { LOCALE, fmt } from "@/app/lib/i18n";
@@ -38,6 +39,43 @@ const CONSULTA = [
     en: "We'll start you on 25 milligrams of metoprolol daily and check for CHF.",
   },
 ];
+
+/**
+ * El reloj de la apertura, en segundos. Está aquí y no repartido por el JSX
+ * para poder leer la secuencia entera de un vistazo y afinarla en un sitio.
+ *
+ * La portada se representa como una sesión: se oye un turno y un momento
+ * después se rinde, alternando planas. Los gestos viven en globals.css.
+ *
+ *   0.06  el rótulo en vivo
+ *   0.12  el lomo empieza a trazarse
+ *   0.26  se oye el titular
+ *   0.58  se rinde el titular
+ *   0.86  turno 1 — se oye · 1.14 se rinde
+ *   1.26  turno 2 — se oye · 1.54 se rinde
+ *   1.66  turno 3 — se oye · 1.94 se rinde
+ *   2.10  la leyenda y el cierre
+ */
+const APERTURA = {
+  eyebrow: 0.06,
+  titular: 0.26,
+  /** Lo que tarda una interpretación en llegar tras su original. */
+  rendicion: 0.32,
+  primerTurno: 0.86,
+  entreTurnos: 0.4,
+  cierre: 2.1,
+};
+
+/** Cuándo se oye el turno `i` y cuándo se rinde. */
+function tiempos(i: number): { oir: number; rendir: number } {
+  const oir = APERTURA.primerTurno + i * APERTURA.entreTurnos;
+  return { oir, rendir: oir + APERTURA.rendicion };
+}
+
+/** El desfase se pasa como variable CSS; cada clase decide qué hacer con él. */
+function desfase(segundos: number): CSSProperties {
+  return { ["--desfase" as string]: `${segundos}s` };
+}
 
 function money(cents: number, gratis: string): string {
   return cents === 0 ? gratis : `$${(cents / 100).toFixed(0)}`;
@@ -139,77 +177,97 @@ export default async function LandingPage() {
             español siempre a la izquierda, el inglés a la derecha; la cursiva
             marca lo que se pronunció y la romana lo que rindió parla. */}
         <section className="pt-12 sm:pt-16">
-          <p className="sobre-lomo flex items-center justify-center gap-2 bg-background pb-10 font-mono text-[9.5px] uppercase tracking-[0.2em] text-accent">
+          <p
+            className="entra sobre-lomo flex items-center justify-center gap-2 bg-background pb-10 font-mono text-[9.5px] uppercase tracking-[0.2em] text-accent"
+            style={desfase(APERTURA.eyebrow)}
+          >
             <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
             {t.portada.eyebrow}
           </p>
 
           <div className="lomo">
             <div className="grid grid-cols-1 gap-y-5 pb-16 md:grid-cols-[1fr_auto_1fr] md:items-center md:gap-y-0 md:pb-20">
-              <h1 className="habla-origen text-balance text-muted text-[clamp(1.7rem,4.2vw,2.6rem)] font-normal leading-[1.14] tracking-tight md:pr-10 md:text-right">
+              <h1
+                className="oir plana-izq habla-origen text-balance text-muted text-[clamp(1.7rem,4.2vw,2.6rem)] font-normal leading-[1.14] tracking-tight md:pr-10 md:text-right"
+                style={desfase(APERTURA.titular)}
+              >
                 Cada palabra, en el otro idioma. Ni una de más.
               </h1>
 
               <span
                 aria-hidden
-                className="hidden bg-background px-2.5 font-mono text-[13px] text-accent md:block"
+                className="entra hidden bg-background px-2.5 font-mono text-[13px] text-accent md:block"
+                style={desfase(APERTURA.titular + APERTURA.rendicion)}
               >
                 ⇄
               </span>
 
               <p
                 lang="en"
-                className="rendir habla text-balance text-[clamp(1.7rem,4.2vw,2.6rem)] font-normal leading-[1.14] tracking-tight md:pl-10"
-                style={{ ["--desfase" as string]: "0.65s" }}
+                className="rendir plana-der habla text-balance text-[clamp(1.7rem,4.2vw,2.6rem)] font-normal leading-[1.14] tracking-tight md:pl-10"
+                style={desfase(APERTURA.titular + APERTURA.rendicion)}
               >
                 Every word, in the other language. Not one more.
               </p>
             </div>
 
-            {CONSULTA.map((t, i) => (
-              <div
-                key={t.hora}
-                className="grid grid-cols-1 gap-y-2 border-l border-hairline py-5 pl-4 md:grid-cols-[1fr_auto_1fr] md:gap-y-0 md:border-l-0 md:py-6 md:pl-0"
-              >
-                <p
-                  className={`text-[16.5px] leading-[1.6] md:pr-10 md:text-right ${
-                    t.origen === "es" ? "habla-origen text-muted" : "habla rendir"
-                  }`}
-                  style={{ ["--desfase" as string]: `${0.85 + i * 0.12}s` }}
+            {CONSULTA.map((turno, i) => {
+              const reloj = tiempos(i);
+              // Cada plana lleva el tiempo de su papel, no el de su idioma: por
+              // eso el desfase se decide por `origen` y no por el lado.
+              const esOrigen = turno.origen === "es";
+              return (
+                <div
+                  key={turno.hora}
+                  className="grid grid-cols-1 gap-y-2 border-l border-hairline py-5 pl-4 md:grid-cols-[1fr_auto_1fr] md:gap-y-0 md:border-l-0 md:py-6 md:pl-0"
                 >
-                  {t.es}
-                </p>
+                  <p
+                    className={`plana-izq text-[16.5px] leading-[1.6] md:pr-10 md:text-right ${
+                      esOrigen ? "oir habla-origen text-muted" : "habla rendir"
+                    }`}
+                    style={desfase(esOrigen ? reloj.oir : reloj.rendir)}
+                  >
+                    {turno.es}
+                  </p>
 
-                <span
-                  aria-hidden
-                  className="hidden self-start bg-background px-2.5 py-1 font-mono text-[9px] tabular-nums text-faint md:block"
-                >
-                  {t.hora}
-                </span>
+                  <span
+                    aria-hidden
+                    className="entra hidden self-start bg-background px-2.5 py-1 font-mono text-[9px] tabular-nums text-faint md:block"
+                    style={desfase(reloj.oir)}
+                  >
+                    {turno.hora}
+                  </span>
 
-                <p
-                  lang="en"
-                  className={`text-[16.5px] leading-[1.6] md:pl-10 ${
-                    t.origen === "en" ? "habla-origen text-muted" : "habla rendir"
-                  }`}
-                  style={{ ["--desfase" as string]: `${0.85 + i * 0.12}s` }}
-                >
-                  {t.en}
-                </p>
-              </div>
-            ))}
+                  <p
+                    lang="en"
+                    className={`plana-der text-[16.5px] leading-[1.6] md:pl-10 ${
+                      esOrigen ? "habla rendir" : "oir habla-origen text-muted"
+                    }`}
+                    style={desfase(esOrigen ? reloj.rendir : reloj.oir)}
+                  >
+                    {turno.en}
+                  </p>
+                </div>
+              );
+            })}
           </div>
 
           {/* La leyenda va debajo, donde ya se ha visto el patrón: puesta
               arriba sería una instrucción antes de tener qué leer. */}
-          <p className="mt-6 text-center font-mono text-[9px] uppercase tracking-[0.18em] text-faint">
+          <p
+            className="entra mt-6 text-center font-mono text-[9px] uppercase tracking-[0.18em] text-faint"
+            style={desfase(APERTURA.cierre)}
+          >
             <span className="habla-origen text-[11px] normal-case tracking-normal text-muted">
               {t.portada.leyendaCursiva}
             </span>
             {t.portada.leyendaResto}
           </p>
 
-          <div className="mx-auto mt-16 max-w-lg text-center sm:mt-20">
+          <div
+            className="entra mx-auto mt-16 max-w-lg text-center sm:mt-20"
+            style={desfase(APERTURA.cierre + 0.1)}
+          >
             <p className="text-[15px] leading-relaxed text-muted">
               {t.portada.lede}
             </p>

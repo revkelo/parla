@@ -128,6 +128,22 @@ body {
       transparent
     );
     pointer-events: none;
+    /* El lomo se traza de arriba abajo mientras van llegando los turnos: la
+       estructura de la página se dibuja al mismo tiempo que se llena. Empieza
+       antes que el primer turno y termina después del último, así que la línea
+       nunca va por detrás del texto que sostiene. */
+    transform-origin: top;
+    animation: trazar 1.9s cubic-bezier(0.5, 0, 0.2, 1) both;
+    animation-delay: 0.12s;
+  }
+}
+
+@keyframes trazar {
+  from {
+    transform: translateX(-0.5px) scaleY(0);
+  }
+  to {
+    transform: translateX(-0.5px) scaleY(1);
   }
 }
 
@@ -138,18 +154,40 @@ body {
   position: relative;
 }
 
-/* ─────────────────────────── El desfase ───────────────────────────
-   La firma de la página. Al cargar, el original ya está y la interpretación
-   llega un momento después, igual que en una sesión real: primero se oye,
-   después se rinde. Es la única animación orquestada del sitio.
+/* ─────────────────────────── La apertura ───────────────────────────
+   La firma de la página, y la única animación orquestada del sitio: al cargar,
+   la portada se representa como una sesión de verdad. Se oye un turno, y un
+   momento después se rinde. Turno a turno, alternando planas.
 
-   El desenfoque al entrar imita el texto que aún se está resolviendo; sin él,
-   el movimiento parece una transición de interfaz cualquiera. */
+   Son dos gestos distintos a propósito, porque son dos actos distintos:
+
+     · OÍR    el original entra limpio y de una. El habla no titubea.
+     · RENDIR la interpretación se resuelve desde el desenfoque, como el texto
+              que todavía se está decidiendo. Sin ese blur el movimiento
+              parecería una transición de interfaz cualquiera.
+
+   Cada plana deriva desde su propio margen hacia el lomo, así que las dos
+   mitades se cierran sobre la línea central en lugar de aparecer y ya. En una
+   sola columna la deriva se anula: sin dos planas, no hay hacia dónde cerrar.
+
+   Los tiempos se reparten desde la portada (`APERTURA` en app/page.tsx) para
+   que el reloj de la secuencia se lea en un solo sitio. */
+
+@keyframes oir {
+  from {
+    opacity: 0;
+    transform: translate(var(--deriva, 0px), 4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 
 @keyframes rendir {
   from {
     opacity: 0;
-    transform: translateY(5px);
+    transform: translate(var(--deriva, 0px), 5px);
     filter: blur(4px);
   }
   to {
@@ -159,9 +197,46 @@ body {
   }
 }
 
+/* La entrada neutra: rótulos, cifras y todo lo que no es habla. No deriva ni
+   se desenfoca, porque no es nadie hablando. */
+@keyframes entra {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.oir {
+  animation: oir 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--desfase, 0s);
+}
+
 .rendir {
   animation: rendir 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: var(--desfase, 0.5s);
+}
+
+.entra {
+  animation: entra 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--desfase, 0s);
+}
+
+.plana-izq,
+.plana-der {
+  --deriva: 0px;
+}
+
+@media (min-width: 768px) {
+  .plana-izq {
+    --deriva: -7px;
+  }
+  .plana-der {
+    --deriva: 7px;
+  }
 }
 
 @keyframes rise {
@@ -188,9 +263,12 @@ body {
     transition-duration: 0.01ms !important;
   }
 
-  /* Sin esto, el desfase seguiría retrasando la interpretación medio segundo
+  /* Sin esto, los desfases seguirían reteniendo la portada casi dos segundos
      con la pantalla en blanco: la animación dura nada, pero la espera no. */
-  .rendir {
+  .oir,
+  .rendir,
+  .entra,
+  .lomo::before {
     animation-delay: 0s !important;
   }
 }
