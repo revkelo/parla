@@ -74,7 +74,9 @@ function tiempos(i: number): { oir: number; rendir: number } {
 
 /** El desfase se pasa como variable CSS; cada clase decide qué hacer con él. */
 function desfase(segundos: number): CSSProperties {
-  return { ["--desfase" as string]: `${segundos}s` };
+  // Redondeado: sumar los tramos deja restos de coma flotante
+  // (0.58000000000000007s) que ensucian el HTML sin cambiar nada.
+  return { ["--desfase" as string]: `${segundos.toFixed(2)}s` };
 }
 
 function money(cents: number, gratis: string): string {
