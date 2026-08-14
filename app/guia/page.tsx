@@ -6,9 +6,11 @@ import { getIdioma } from "@/app/lib/idioma-servidor";
 import { createClient } from "@/app/lib/supabase/server";
 
 export const metadata: Metadata = {
-  title: "Cómo usar parla · Guía",
+  // El layout añade "· Parla" con su plantilla; repetirlo aquí sale doble.
+  title: "Guía de uso",
   description:
     "Guía de uso de parla: cómo interpretar una consulta médica en vivo español ⇄ inglés, cómo hablar para obtener la mejor interpretación, historial, minutos y privacidad.",
+  alternates: { canonical: "/guia" },
 };
 export const dynamic = "force-dynamic";
 
