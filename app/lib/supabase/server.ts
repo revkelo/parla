@@ -4,6 +4,11 @@ import { cookies } from "next/headers";
 /**
  * Cliente de Supabase para Server Components, Route Handlers y Server Actions.
  * Respeta RLS: actúa como el usuario de la sesión.
+ *
+ * Las tablas de parla viven en el esquema `parla`, no en `public`. Se declara
+ * aquí, en el cliente, y no en cada consulta: así las decenas de `.from(...)`
+ * repartidas por la app siguen escribiéndose igual. `public` se quedó solo con
+ * la extensión btree_gist, que no es de nadie en particular.
  */
 export async function createClient() {
   const cookieStore = await cookies();
@@ -12,6 +17,7 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      db: { schema: "parla" },
       cookies: {
         getAll() {
           return cookieStore.getAll();
@@ -43,6 +49,7 @@ export function createAdminClient() {
   if (!key) throw new Error("Falta SUPABASE_SERVICE_ROLE_KEY.");
 
   return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, key, {
+    db: { schema: "parla" },
     cookies: { getAll: () => [], setAll: () => {} },
     auth: { persistSession: false, autoRefreshToken: false },
   });
