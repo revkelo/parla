@@ -1,14 +1,27 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import nodemailer from "nodemailer";
+import { sitioDe, type Sitio } from "./sitios";
 
 export const dynamic = "force-dynamic";
+// SMTP necesita sockets: no funciona en el runtime edge.
+export const runtime = "nodejs";
 
 /**
  * Send Email Hook de Supabase.
  *
- * Supabase deja de enviar los correos de autenticación y llama aquí; nosotros
- * los mandamos por la API HTTP de Resend. Así se evita configurar SMTP y, de
- * paso, el límite de ~2 correos/hora del servidor prestado de Supabase.
+ * Supabase deja de enviar los correos de autenticación y llama aquí. Se hace
+ * así y no con las plantillas de Supabase por una razón concreta: el proyecto
+ * de Supabase es UNO y lo comparten parla, examia y autoreel, pero sus
+ * plantillas también son una sola. Este hook es el único sitio donde el correo
+ * puede llevar la marca del producto en el que la persona se está registrando.
+ *
+ * Sin eso -y así estuvo- quien creaba una cuenta en examia recibía un correo
+ * que decía "Confirma tu cuenta de parla". El sitio se deduce del host de
+ * `redirect_to` (ver `sitios.ts`).
+ *
+ * El envío va por el SMTP de Brevo, el mismo que tiene configurado el proyecto
+ * de Supabase para cuando este hook no está.
  *
  * Esta ruta queda fuera del matcher del proxy: la autentica la firma del
  * webhook, no una sesión de usuario.
@@ -22,39 +35,6 @@ type Payload = {
     email_action_type: string;
     site_url: string;
   };
-};
-
-/** Texto de cada tipo de correo que manda Supabase. */
-const PLANTILLAS: Record<
-  string,
-  { asunto: string; titulo: string; cuerpo: string; boton: string }
-> = {
-  signup: {
-    asunto: "Confirma tu cuenta de parla",
-    titulo: "Confirma tu cuenta",
-    cuerpo:
-      "Ya casi está. Pulsa el botón para confirmar tu correo y empezar a interpretar.",
-    boton: "Confirmar cuenta",
-  },
-  recovery: {
-    asunto: "Restablece tu contraseña de parla",
-    titulo: "Restablece tu contraseña",
-    cuerpo:
-      "Pediste cambiar tu contraseña. Este enlace caduca en una hora. Si no fuiste tú, ignora este correo.",
-    boton: "Elegir contraseña nueva",
-  },
-  magiclink: {
-    asunto: "Tu enlace de acceso a parla",
-    titulo: "Entra a parla",
-    cuerpo: "Pulsa el botón para entrar. El enlace caduca en una hora.",
-    boton: "Entrar",
-  },
-  email_change: {
-    asunto: "Confirma tu nuevo correo en parla",
-    titulo: "Confirma el cambio de correo",
-    cuerpo: "Pulsa el botón para confirmar tu nueva dirección.",
-    boton: "Confirmar correo",
-  },
 };
 
 /**
@@ -88,7 +68,8 @@ function firmaValida(
 
 function plantillaHtml(
   enlace: string,
-  t: (typeof PLANTILLAS)[string],
+  sitio: Sitio,
+  t: Sitio["textos"][keyof Sitio["textos"]],
   nombre?: string
 ): string {
   const saludo = nombre ? `Hola, ${nombre}:` : "Hola:";
@@ -96,8 +77,8 @@ function plantillaHtml(
 <html lang="es"><body style="margin:0;padding:32px 16px;background:#f7f8f8;font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#16181d">
   <table role="presentation" style="max-width:480px;margin:0 auto;background:#fff;border-radius:14px;border:1px solid rgba(20,22,28,.08)">
     <tr><td style="padding:28px 28px 8px">
-      <span style="display:inline-block;width:26px;height:26px;line-height:26px;text-align:center;border-radius:7px;background:rgba(13,125,116,.12);color:#0d7d74;font-weight:600">p</span>
-      <span style="margin-left:8px;font-weight:600;letter-spacing:-.01em">parla</span>
+      <span style="display:inline-block;width:26px;height:26px;line-height:26px;text-align:center;border-radius:7px;background:${sitio.acentoSuave};color:${sitio.acento};font-weight:600">${sitio.inicial}</span>
+      <span style="margin-left:8px;font-weight:600;letter-spacing:-.01em">${sitio.nombre}</span>
     </td></tr>
     <tr><td style="padding:8px 28px 0">
       <h1 style="margin:0 0 6px;font-size:19px;letter-spacing:-.01em">${t.titulo}</h1>
@@ -114,20 +95,51 @@ function plantillaHtml(
       </p>
     </td></tr>
     <tr><td style="padding:14px 28px;border-top:1px solid rgba(20,22,28,.08)">
-      <p style="margin:0;font-size:11px;color:#9aa0a8">parla · interpretación médica ES ⇄ EN</p>
+      <p style="margin:0;font-size:11px;color:#9aa0a8">${sitio.nombre} · ${sitio.pie}</p>
     </td></tr>
   </table>
 </body></html>`;
 }
 
+/**
+ * El transporte SMTP, creado una vez por instancia.
+ *
+ * Sin tocar la verificación TLS, y esto tiene historia. Al probar las
+ * credenciales desde Bogotá, el relay de Brevo sirvió un certificado de
+ * `smtp-relay-offshore-southamerica-east-v2.sendinblue.com`, cuyos nombres
+ * alternativos NO incluyen `smtp-relay.brevo.com`. La conclusión fácil era que
+ * hay que verificar contra el nombre viejo, y así se escribió.
+ *
+ * En producción reventó: desde us-east, que es donde corre esta función, Brevo
+ * sirve `smtp-relay-offshore-us-east1-v2.brevo.com`, y ese SÍ incluye
+ * `smtp-relay.brevo.com`. O sea que el certificado depende de la región, y el
+ * apaño que arreglaba la prueba local era exactamente lo que rompía el envío
+ * real.
+ *
+ * Lo correcto es no forzar nada: se verifica contra el host al que se conecta,
+ * que es lo que hace nodemailer por su cuenta.
+ */
+let transporte: nodemailer.Transporter | null = null;
+
+function smtp(usuario: string, clave: string) {
+  transporte ??= nodemailer.createTransport({
+    host: process.env.BREVO_SMTP_HOST ?? "smtp-relay.brevo.com",
+    port: Number(process.env.BREVO_SMTP_PORT ?? 587),
+    secure: false,
+    auth: { user: usuario, pass: clave },
+  });
+  return transporte;
+}
+
 export async function POST(req: Request) {
   const secreto = process.env.SUPABASE_EMAIL_HOOK_SECRET;
-  const resendKey = process.env.RESEND_API_KEY;
+  const smtpUser = process.env.BREVO_SMTP_USER;
+  const smtpPass = process.env.BREVO_SMTP_PASS;
   const remitente = process.env.EMAIL_REMITENTE;
 
-  if (!secreto || !resendKey || !remitente) {
+  if (!secreto || !smtpUser || !smtpPass || !remitente) {
     console.error(
-      "Faltan SUPABASE_EMAIL_HOOK_SECRET, RESEND_API_KEY o EMAIL_REMITENTE."
+      "Faltan SUPABASE_EMAIL_HOOK_SECRET, BREVO_SMTP_USER, BREVO_SMTP_PASS o EMAIL_REMITENTE."
     );
     return NextResponse.json({ error: "No configurado." }, { status: 500 });
   }
@@ -150,7 +162,10 @@ export async function POST(req: Request) {
   }
 
   const { user, email_data: ed } = datos;
-  const plantilla = PLANTILLAS[ed.email_action_type] ?? PLANTILLAS.signup;
+  // De qué sitio de la zona es este correo. Lo dice a dónde vuelve el enlace.
+  const sitio = sitioDe(ed.redirect_to);
+  const tipo = ed.email_action_type as keyof Sitio["textos"];
+  const plantilla = sitio.textos[tipo] ?? sitio.textos.signup;
 
   // El enlace apunta al verificador de Supabase, que canjea el token y luego
   // redirige a nuestra app.
@@ -160,23 +175,17 @@ export async function POST(req: Request) {
     `&type=${encodeURIComponent(ed.email_action_type)}` +
     `&redirect_to=${encodeURIComponent(ed.redirect_to)}`;
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${resendKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      from: `parla <${remitente}>`,
-      to: [user.email],
+  try {
+    await smtp(smtpUser, smtpPass).sendMail({
+      // El nombre visible es el del producto; la dirección es la misma para
+      // toda la zona, porque es la que está verificada en Brevo.
+      from: `${sitio.nombre} <${remitente}>`,
+      to: user.email,
       subject: plantilla.asunto,
-      html: plantillaHtml(enlace, plantilla, user.user_metadata?.full_name),
-    }),
-  });
-
-  if (!res.ok) {
-    const detalle = await res.text();
-    console.error("Resend rechazó el envío:", res.status, detalle);
+      html: plantillaHtml(enlace, sitio, plantilla, user.user_metadata?.full_name),
+    });
+  } catch (err) {
+    console.error("Brevo rechazó el envío:", err);
     // Un 500 hace que Supabase informe del fallo en vez de dar el alta por
     // buena dejando al usuario sin su correo.
     return NextResponse.json({ error: "No se pudo enviar." }, { status: 500 });
