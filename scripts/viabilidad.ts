@@ -68,7 +68,7 @@ for (const p of PLANES) {
   if (p.precio === 0) {
     console.log(
       `  ${p.nombre.padEnd(12)} ${"gratis".padStart(6)}   ${String(p.minutos).padStart(5)}    ` +
-        `${usd(p.minutos * COSTO_MIN).padStart(6)}       —        — (captación)`
+        `${usd(p.minutos * COSTO_MIN).padStart(6)}       -        - (captación)`
     );
     continue;
   }

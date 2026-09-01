@@ -110,7 +110,7 @@ export function Costos({
         />
         <Cifra
           etiqueta="Saldo Deepgram"
-          valor={saldoDeepgram === null ? "—" : usd(saldoDeepgram)}
+          valor={saldoDeepgram === null ? "-" : usd(saldoDeepgram)}
           pie={
             saldoDeepgram === null
               ? "no se pudo consultar"
@@ -156,7 +156,7 @@ export function Costos({
                 </td>
                 <td className="py-3 text-right font-mono text-[12px] tabular-nums text-muted">
                   {p.saldoUsd === null || p.saldoUsd === undefined
-                    ? "—"
+                    ? "-"
                     : usd(p.saldoUsd)}
                 </td>
               </tr>

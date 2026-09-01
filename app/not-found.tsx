@@ -8,7 +8,7 @@ import { createClient } from "@/app/lib/supabase/server";
  * La usan tanto las URLs mal escritas como los `notFound()` deliberados: el
  * panel de administración y las consultas ajenas devuelven 404 en vez de 403
  * para no confirmarle a nadie que ese recurso existe. Por eso el texto no
- * insinúa que quizá no tengas permiso — diría justo lo que se pretende callar.
+ * insinúa que quizá no tengas permiso - diría justo lo que se pretende callar.
  *
  * La salida depende de si hay sesión: mandar a la portada a alguien que ya
  * entró le obliga a volver a navegar hasta donde estaba.

@@ -5,7 +5,7 @@ import type { Idioma } from "./i18n";
  *
  * Es documentación de PRODUCTO, no técnica: explica cómo trabajar con la
  * herramienta en una consulta real. A propósito no aparece ni un nombre de
- * proveedor, ni una ruta de API, ni nada de cómo está construida por dentro —
+ * proveedor, ni una ruta de API, ni nada de cómo está construida por dentro -
  * eso es interno y además no le sirve de nada a quien está interpretando.
  *
  * El contenido vive aquí y no en `i18n.ts` porque son párrafos largos: mezclarlo

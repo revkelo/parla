@@ -112,7 +112,7 @@ export default async function AdminPage() {
         />
         <Kpi
           etiqueta="Margen"
-          valor={ingresosMes > 0 ? `${margen}%` : "—"}
+          valor={ingresosMes > 0 ? `${margen}%` : "-"}
           pie={`costo $${costoMes.toFixed(2)} a $${COSTO_MIN}/min`}
           tono={ingresosMes === 0 ? "neutro" : margen >= 60 ? "ok" : "aviso"}
         />

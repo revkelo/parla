@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
  *
  * No es una vista de solo lectura: monta el mismo intérprete que `/app` con los
  * turnos anteriores ya cargados, así que pulsar Continuar retoma la MISMA
- * consulta —los turnos nuevos se guardan en ella y la IA conserva el contexto—
+ * consulta -los turnos nuevos se guardan en ella y la IA conserva el contexto-
  * en lugar de abrir una aparte. Volver a una conversación y seguir hablando es
  * lo que uno espera de un chat.
  */

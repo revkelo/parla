@@ -18,7 +18,7 @@ import {
  *
  * No se usan prefijos `/es` y `/en` en la URL a propósito: obligarían a mover
  * todas las rutas bajo `app/[locale]/` y a duplicar los enlaces internos, a
- * cambio de un beneficio —SEO en dos idiomas— que solo aplica a la portada.
+ * cambio de un beneficio -SEO en dos idiomas- que solo aplica a la portada.
  */
 export async function getIdioma(): Promise<Idioma> {
   const elegido = (await cookies()).get(COOKIE_IDIOMA)?.value;

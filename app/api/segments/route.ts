@@ -52,8 +52,8 @@ export async function POST(req: Request) {
 
   const supabase = await createClient();
 
-  // `upsert` sobre (session_id, ordinal): si el mismo turno se reintenta —por
-  // un reintento de red, o porque la interpretación llegó después del texto—
+  // `upsert` sobre (session_id, ordinal): si el mismo turno se reintenta -por
+  // un reintento de red, o porque la interpretación llegó después del texto-
   // se actualiza en vez de duplicarse o de romper por la clave única.
   const { error } = await supabase.from("segments").upsert(
     {

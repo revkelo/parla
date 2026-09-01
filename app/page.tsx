@@ -51,9 +51,9 @@ const CONSULTA = [
  *   0.12  el lomo empieza a trazarse
  *   0.26  se oye el titular
  *   0.58  se rinde el titular
- *   0.86  turno 1 — se oye · 1.14 se rinde
- *   1.26  turno 2 — se oye · 1.54 se rinde
- *   1.66  turno 3 — se oye · 1.94 se rinde
+ *   0.86  turno 1 - se oye · 1.14 se rinde
+ *   1.26  turno 2 - se oye · 1.54 se rinde
+ *   1.66  turno 3 - se oye · 1.94 se rinde
  *   2.10  la leyenda y el cierre
  */
 const APERTURA = {

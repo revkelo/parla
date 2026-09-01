@@ -36,11 +36,11 @@ export function AccionesConsulta({
 
   const descargar = () => {
     const cabecera =
-      `PARLA — Registro de interpretación médica (ES ⇄ EN)\n` +
+      `PARLA - Registro de interpretación médica (ES ⇄ EN)\n` +
       `${titulo}\n` +
       `${new Date(fecha).toLocaleString("es")}\n` +
       `Turnos: ${turnos.length}\n` +
-      `${"—".repeat(48)}\n\n`;
+      `${"-".repeat(48)}\n\n`;
 
     const cuerpo = turnos
       .map((t) => {

@@ -4,7 +4,7 @@
  * Van aparte de `admin.ts` a propósito: ese módulo importa el cliente de
  * Supabase de servidor, y la tabla de usuarios y la gráfica son componentes de
  * cliente. Si compartieran módulo, el bundler arrastraría la clave de servicio
- * hacia el navegador — de hecho, falla la compilación antes de permitirlo.
+ * hacia el navegador - de hecho, falla la compilación antes de permitirlo.
  */
 
 export type Metricas = {
@@ -70,7 +70,7 @@ export function usd(cents: number): string {
   return `$${(cents / 100).toLocaleString("es", { maximumFractionDigits: 0 })}`;
 }
 
-/** "hace 3 h", "hace 2 d" — o `null` si nunca hubo actividad. */
+/** "hace 3 h", "hace 2 d" - o `null` si nunca hubo actividad. */
 export function haceCuanto(iso: string | null): string | null {
   if (!iso) return null;
   const segundos = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);

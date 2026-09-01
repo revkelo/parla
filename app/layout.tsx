@@ -77,7 +77,7 @@ export const metadata: Metadata = {
 /**
  * El autor se declara con el mismo `@id` que usa kgstudio.top. No es un dato
  * repetido: es la misma entidad citada desde otro sitio, y es lo que hace que
- * Google —y los asistentes que resumen la web— sepan que parla es de Kevin
+ * Google -y los asistentes que resumen la web- sepan que parla es de Kevin
  * Gonzalez y no de un tercero con el mismo producto.
  */
 const DATOS_ESTRUCTURADOS = {

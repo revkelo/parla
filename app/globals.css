@@ -7,19 +7,19 @@
    interpretación en la otra, y un lomo vertical entre las dos. De ahí salen
    las tres decisiones del sistema.
 
-   COLOR — papel de copia clínica. El fondo es el gris verdoso de los
+   COLOR - papel de copia clínica. El fondo es el gris verdoso de los
    formularios calcados de hospital, no un blanco de interfaz; encima van
    pliegos casi blancos, así que las tarjetas se leen como hojas sobre una
    mesa y no como cajas dibujadas con borde. La tinta es azul-negra de pluma,
    nunca negro puro.
 
-   TIPOGRAFÍA — tres voces, cada una con su trabajo:
+   TIPOGRAFÍA - tres voces, cada una con su trabajo:
      · Newsreader  el habla. Romana la interpretación, CURSIVA el original,
                    que es como distinguen las ediciones bilingües de verdad.
      · Plex Sans   la interfaz: rótulos, botones, navegación.
      · Plex Mono   los datos: tiempos, minutos, cuotas.
 
-   ESTRUCTURA — una sola línea, y es vertical: el lomo.
+   ESTRUCTURA - una sola línea, y es vertical: el lomo.
    ═══════════════════════════════════════════════════════════════════════ */
 
 :root {

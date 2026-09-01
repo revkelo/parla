@@ -265,7 +265,7 @@ export default function Transcriptor({
 
   /**
    * Auto-scroll, pero solo si el usuario ya estaba abajo. Si subió a releer un
-   * turno anterior —algo normal en mitad de una consulta— arrastrarlo al final
+   * turno anterior -algo normal en mitad de una consulta- arrastrarlo al final
    * cada vez que llega texto nuevo le hace perder el sitio.
    */
   useEffect(() => {
@@ -400,10 +400,10 @@ export default function Transcriptor({
 
   const handleDownload = () => {
     const header =
-      `PARLA — Registro de interpretación médica (ES ⇄ EN)\n` +
+      `PARLA - Registro de interpretación médica (ES ⇄ EN)\n` +
       `Fecha: ${new Date().toLocaleString("es")}\n` +
       `Duración: ${fmtDuration(elapsed)} · Turnos: ${segments.length}\n` +
-      `${"—".repeat(48)}\n\n`;
+      `${"-".repeat(48)}\n\n`;
     const blob = new Blob([header + sessionLines().join("\n\n") + "\n"], {
       type: "text/plain;charset=utf-8",
     });
@@ -421,8 +421,8 @@ export default function Transcriptor({
     // que no estiraba. El resultado era la barra de control a media pantalla
     // con un vacío debajo cuando la consulta aún no tenía turnos.
     // `main` ocupa todo el ancho y la columna de lectura se centra dentro. Así
-    // la barra de control de abajo abarca el área entera —se lee como la barra
-    // de una aplicación, no como un botón suelto— mientras el texto conserva
+    // la barra de control de abajo abarca el área entera -se lee como la barra
+    // de una aplicación, no como un botón suelto- mientras el texto conserva
     // una medida cómoda.
     <main className="flex w-full flex-1 flex-col">
       <div className="mx-auto w-full max-w-2xl px-4 sm:px-6">

@@ -151,7 +151,7 @@ export function TablaUsuarios({
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">{u.full_name ?? "—"}</span>
+                      <span className="font-medium">{u.full_name ?? "-"}</span>
                       {u.ver_tecnico && u.role !== "admin" && (
                         <span className="rounded-full border border-hairline px-1.5 py-0.5 font-mono text-[8.5px] uppercase tracking-[0.12em] text-muted">
                           pruebas
