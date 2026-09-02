@@ -37,8 +37,9 @@ export const metadata: Metadata = {
     default: "Parla · Intérprete médico en vivo (ES ⇄ EN)",
     template: "%s · Parla",
   },
+  // 174 caracteres se cortaban a 160 en el resultado de busqueda. Esta cabe.
   description:
-    "Interpretación médica profesional español ⇄ inglés en tiempo real para intérpretes, hospitales y clínicas (OPI/VRI). Terminología clínica, acrónimos, dosis y cifras precisas.",
+    "Interpretación médica en vivo español ⇄ inglés para intérpretes, hospitales y clínicas (OPI/VRI). Terminología clínica, dosis y cifras exactas.",
   applicationName: "Parla",
   keywords: [
     "intérprete médico",
@@ -67,7 +68,9 @@ export const metadata: Metadata = {
       "Transcribe y traduce la consulta mientras ocurre, con la terminología clínica intacta.",
   },
   twitter: {
-    card: "summary",
+    // `summary_large_image` ahora que hay una imagen 1200x630 propia. Con
+    // `summary` la tarjeta salia en miniatura y desaprovechaba el dibujo.
+    card: "summary_large_image",
     title: "Parla · Intérprete médico en vivo (ES ⇄ EN)",
     description:
       "Transcribe y traduce la consulta mientras ocurre, con la terminología clínica intacta.",
