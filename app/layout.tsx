@@ -96,6 +96,25 @@ const DATOS_ESTRUCTURADOS = {
       inLanguage: ["es", "en"],
       description:
         "Intérprete médico en vivo español ⇄ inglés: transcribe y traduce la consulta mientras ocurre, cuidando terminología clínica, acrónimos y dosis.",
+      /*
+       * El plan de prueba, que es gratis. Google pide `offers` para entender
+       * qué cuesta una aplicación, y sin él parla era la única de la zona que
+       * no decía nada de su precio. No se escriben aquí los planes de pago: sus
+       * importes viven en la base y se pintan en la portada desde ahí, y un
+       * precio copiado a mano es un precio que se desfasa el día que suba.
+       *
+       * Falta `aggregateRating`, y falta a propósito: no hay valoraciones que
+       * declarar. Eso deja la ficha fuera de la tarjeta de aplicación de Google
+       * -Search Console lo avisa-, y es la respuesta correcta mientras no haya
+       * valoraciones de verdad. Cuando las haya, se añaden y la tarjeta se
+       * desbloquea sola.
+       */
+      offers: {
+        "@type": "Offer",
+        price: "0",
+        priceCurrency: "USD",
+        description: "Plan de prueba con minutos de interpretación al mes, sin tarjeta.",
+      },
       author: { "@id": "https://kgstudio.top/#kevin" },
       publisher: { "@id": "https://kgstudio.top/#kgstudio" },
     },
