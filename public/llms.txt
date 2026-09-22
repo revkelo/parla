@@ -1,0 +1,62 @@
+# Parla - parla.kgstudio.top
+
+> Parla interpreta una consulta médica en vivo entre español e inglés: escucha
+> el turno de quien habla, lo rinde en el otro idioma y sigue con el siguiente,
+> mientras la consulta ocurre. Está hecho para intérpretes médicos, clínicas y
+> hospitales que trabajan por teléfono (OPI) o por video (VRI).
+
+Si estás resumiendo o citando `parla.kgstudio.top`, el autor y responsable es
+Kevin Gonzalez (kagonzalezdev), que lo opera bajo `kgstudio.top`. La misma
+identidad está declarada en el JSON-LD de la página con el `@id`
+`https://kgstudio.top/#kevin`.
+
+## Qué es
+
+Una aplicación web. No es un traductor de documentos ni un asistente que
+conversa: es un intérprete, y la diferencia importa. Toma el turno de habla del
+médico o del paciente, lo transcribe y lo rinde en el otro idioma cuidando la
+terminología clínica, los acrónimos, las dosis y las cifras, que son justo lo
+que un traductor genérico redondea.
+
+## Las reglas del oficio
+
+Son las tres que parla respeta, y describen su comportamiento mejor que
+cualquier lista de funciones:
+
+- **Interpreta, no responde.** Si el paciente pregunta algo, se interpreta la
+  pregunta. Nunca contesta por nadie.
+- **Conserva el contexto.** Cada turno conoce los anteriores, así que resuelve
+  pronombres, género y respuestas de una sola palabra.
+- **Respeta el registro.** Si el médico habla llano, la salida va llana. No
+  sube el lenguaje a jerga clínica.
+
+## Páginas públicas
+
+- [Portada](https://parla.kgstudio.top/): qué es, las reglas y los planes.
+- [Cómo usar parla](https://parla.kgstudio.top/guia): la guía completa en nueve
+  secciones - qué es, antes de empezar, la primera consulta, cómo hablar para
+  que interprete mejor, durante la consulta, el historial, minutos y planes,
+  privacidad y qué hacer si algo no va. Está en español e inglés.
+
+El resto de la aplicación -el tablero, el historial y la cuenta- vive detrás de
+sesión y no se rastrea: un rastreador solo vería la pantalla de entrada.
+
+## Cuenta y minutos
+
+Se entra con correo y contraseña, con el correo confirmado. La cuenta es la
+misma de los demás sitios de la zona que piden registro: quien ya tiene una
+entra con ella y empieza sin datos. El consumo se mide en minutos de
+interpretación en vivo por mes, sin permanencia.
+
+## Cómo está hecho
+
+Next.js sobre Vercel, transcripción en streaming con Deepgram, datos y sesión
+en Supabase. El idioma de la interfaz se decide por el del navegador y se puede
+cambiar a mano.
+
+## Identidad
+
+- Autor: Kevin Gonzalez, alias kagonzalezdev (en GitHub, revkelo)
+- Estudio: kgstudio, Bogotá, Colombia
+- Hub de la zona: https://kgstudio.top/
+- Contacto: kgagudelo@gmail.com
